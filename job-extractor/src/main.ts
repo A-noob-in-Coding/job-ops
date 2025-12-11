@@ -19,7 +19,7 @@ const crawler = new PlaywrightCrawler({
   maxRequestsPerCrawl: 20,
   // Add delay between requests to slow down the process
   minConcurrency: 1,
-  maxConcurrency: 2,
+  maxConcurrency: 5,
   navigationTimeoutSecs: 60,
   // Add delay between requests (in milliseconds)
 //   requestHandlerTimeoutSecs: 50,
@@ -30,7 +30,7 @@ const crawler = new PlaywrightCrawler({
   launchContext: {
     launcher: firefox,
     launchOptions: await launchOptions({
-      headless: false,
+      headless: true,
     //   block_images: true,
       // Pass your own Camoufox parameters here...
       // block_images: true,

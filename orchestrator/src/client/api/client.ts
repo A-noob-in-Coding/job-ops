@@ -1,0 +1,91 @@
+/**
+ * API client for the orchestrator backend.
+ */
+
+import type { 
+  Job, 
+  ApiResponse, 
+  JobsListResponse, 
+  PipelineStatusResponse,
+  PipelineRun 
+} from '../../shared/types';
+
+const API_BASE = '/api';
+
+async function fetchApi<T>(
+  endpoint: string,
+  options?: RequestInit
+): Promise<T> {
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  });
+  
+  const data: ApiResponse<T> = await response.json();
+  
+  if (!data.success) {
+    throw new Error(data.error || 'API request failed');
+  }
+  
+  return data.data as T;
+}
+
+// Jobs API
+export async function getJobs(statuses?: string[]): Promise<JobsListResponse> {
+  const query = statuses?.length ? `?status=${statuses.join(',')}` : '';
+  return fetchApi<JobsListResponse>(`/jobs${query}`);
+}
+
+export async function getJob(id: string): Promise<Job> {
+  return fetchApi<Job>(`/jobs/${id}`);
+}
+
+export async function updateJob(
+  id: string, 
+  update: Partial<Job>
+): Promise<Job> {
+  return fetchApi<Job>(`/jobs/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(update),
+  });
+}
+
+export async function processJob(id: string): Promise<Job> {
+  return fetchApi<Job>(`/jobs/${id}/process`, {
+    method: 'POST',
+  });
+}
+
+export async function markAsApplied(id: string): Promise<Job> {
+  return fetchApi<Job>(`/jobs/${id}/apply`, {
+    method: 'POST',
+  });
+}
+
+export async function rejectJob(id: string): Promise<Job> {
+  return fetchApi<Job>(`/jobs/${id}/reject`, {
+    method: 'POST',
+  });
+}
+
+// Pipeline API
+export async function getPipelineStatus(): Promise<PipelineStatusResponse> {
+  return fetchApi<PipelineStatusResponse>('/pipeline/status');
+}
+
+export async function getPipelineRuns(): Promise<PipelineRun[]> {
+  return fetchApi<PipelineRun[]>('/pipeline/runs');
+}
+
+export async function runPipeline(config?: {
+  topN?: number;
+  minSuitabilityScore?: number;
+}): Promise<{ message: string }> {
+  return fetchApi<{ message: string }>('/pipeline/run', {
+    method: 'POST',
+    body: JSON.stringify(config || {}),
+  });
+}

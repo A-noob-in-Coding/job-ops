@@ -7,8 +7,8 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 # Configuration
-RXRESUME_EMAIL = os.getenv("RXRESUME_EMAIL", "ssarfaraz@lancashire.ac.uk")
-RXRESUME_PASSWORD = os.getenv("RXRESUME_PASSWORD", "thisisatestpassword")
+RXRESUME_EMAIL = os.getenv("RXRESUME_EMAIL", "")
+RXRESUME_PASSWORD = os.getenv("RXRESUME_PASSWORD", "")
 
 BASE_DIR = Path(__file__).parent
 RESUME_JSON_PATH = BASE_DIR / "base.json"
@@ -79,7 +79,7 @@ def generate_resume_pdf(
     output_path = OUTPUT_DIR / output_filename
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=False)
+        browser = playwright.chromium.launch(headless=True)
         context = browser.new_context()
         page = context.new_page()
 
