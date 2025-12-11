@@ -6,7 +6,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import * as jobsRepo from '../repositories/jobs.js';
 import * as pipelineRepo from '../repositories/pipeline.js';
-import { runPipeline, processJob, getPipelineStatus } from '../pipeline/index.js';
+import { runPipeline, processJob, getPipelineStatus, subscribeToProgress, getProgress } from '../pipeline/index.js';
 import { createNotionEntry } from '../services/notion.js';
 import { clearDatabase } from '../db/clear.js';
 import type { JobStatus, ApiResponse, JobsListResponse, PipelineStatusResponse } from '../../shared/types.js';
@@ -196,6 +196,36 @@ apiRouter.get('/pipeline/status', async (req: Request, res: Response) => {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ success: false, error: message });
   }
+});
+
+/**
+ * GET /api/pipeline/progress - Server-Sent Events endpoint for live progress
+ */
+apiRouter.get('/pipeline/progress', (req: Request, res: Response) => {
+  // Set headers for SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable Nginx buffering
+  
+  // Send initial progress
+  const sendProgress = (data: unknown) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+  
+  // Subscribe to progress updates
+  const unsubscribe = subscribeToProgress(sendProgress);
+  
+  // Send heartbeat every 30 seconds to keep connection alive
+  const heartbeat = setInterval(() => {
+    res.write(': heartbeat\n\n');
+  }, 30000);
+  
+  // Cleanup on close
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
 });
 
 /**

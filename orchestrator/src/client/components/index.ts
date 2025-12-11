@@ -5,4 +5,5 @@ export { ScoreIndicator } from './ScoreIndicator';
 export { JobCard } from './JobCard';
 export { JobList } from './JobList';
 export { ToastContainer, type Toast } from './Toast';
+export { PipelineProgress } from './PipelineProgress';
 export * from './Icons';

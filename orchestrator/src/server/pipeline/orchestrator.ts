@@ -14,11 +14,12 @@ import { readFile } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { runCrawler } from '../services/crawler.js';
-import { scoreAndRankJobs } from '../services/scorer.js';
+import { scoreAndRankJobs, scoreJobSuitability } from '../services/scorer.js';
 import { generateSummary } from '../services/summary.js';
 import { generatePdf } from '../services/pdf.js';
 import * as jobsRepo from '../repositories/jobs.js';
 import * as pipelineRepo from '../repositories/pipeline.js';
+import { progressHelpers, resetProgress } from './progress.js';
 import type { Job, PipelineConfig } from '../../shared/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -54,6 +55,7 @@ export async function runPipeline(config: Partial<PipelineConfig> = {}): Promise
   }
   
   isPipelineRunning = true;
+  resetProgress();
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
   
   // Create pipeline run record
@@ -69,16 +71,21 @@ export async function runPipeline(config: Partial<PipelineConfig> = {}): Promise
     
     // Step 2: Run crawler
     console.log('\n🕷️ Running crawler...');
+    progressHelpers.startCrawling();
     const crawlerResult = await runCrawler();
     
     if (!crawlerResult.success) {
       throw new Error(`Crawler failed: ${crawlerResult.error}`);
     }
     
+    progressHelpers.crawlingComplete(crawlerResult.jobs.length);
+    
     // Step 3: Import discovered jobs
     console.log('\n💾 Importing jobs to database...');
     const { created, skipped } = await jobsRepo.bulkCreateJobs(crawlerResult.jobs);
     console.log(`   Created: ${created}, Skipped (duplicates): ${skipped}`);
+    
+    progressHelpers.importComplete(created, skipped);
     
     await pipelineRepo.updatePipelineRun(pipelineRun.id, {
       jobsDiscovered: created,
@@ -86,21 +93,37 @@ export async function runPipeline(config: Partial<PipelineConfig> = {}): Promise
     
     // Step 4: Get unprocessed jobs and score them
     console.log('\n🎯 Scoring jobs for suitability...');
-    const unprocessedJobs = await jobsRepo.getJobsForProcessing(50); // Get more than topN for ranking
-    const rankedJobs = await scoreAndRankJobs(unprocessedJobs, profile);
+    const unprocessedJobs = await jobsRepo.getJobsForProcessing(50);
     
-    // Update scores in database
-    for (const job of rankedJobs) {
+    // Score jobs with progress updates
+    const scoredJobs: Array<Job & { suitabilityScore: number; suitabilityReason: string }> = [];
+    for (let i = 0; i < unprocessedJobs.length; i++) {
+      const job = unprocessedJobs[i];
+      progressHelpers.scoringJob(i + 1, unprocessedJobs.length, job.title);
+      
+      const { score, reason } = await scoreJobSuitability(job, profile);
+      scoredJobs.push({
+        ...job,
+        suitabilityScore: score,
+        suitabilityReason: reason,
+      });
+      
+      // Update score in database
       await jobsRepo.updateJob(job.id, {
-        suitabilityScore: job.suitabilityScore,
-        suitabilityReason: job.suitabilityReason,
+        suitabilityScore: score,
+        suitabilityReason: reason,
       });
     }
     
+    // Sort by score
+    scoredJobs.sort((a, b) => b.suitabilityScore - a.suitabilityScore);
+    
     // Step 5: Pick top N jobs above threshold
-    const topJobs = rankedJobs
+    const topJobs = scoredJobs
       .filter(j => j.suitabilityScore >= mergedConfig.minSuitabilityScore)
       .slice(0, mergedConfig.topN);
+    
+    progressHelpers.scoringComplete(scoredJobs.length, topJobs.length);
     
     console.log(`\n📊 Selected ${topJobs.length} top jobs for processing:`);
     for (const job of topJobs) {
@@ -110,8 +133,15 @@ export async function runPipeline(config: Partial<PipelineConfig> = {}): Promise
     // Step 6: Process each top job
     let processed = 0;
     
-    for (const job of topJobs) {
+    for (let i = 0; i < topJobs.length; i++) {
+      const job = topJobs[i];
       console.log(`\n📝 Processing: ${job.title} @ ${job.employer}`);
+      
+      progressHelpers.processingJob(i + 1, topJobs.length, {
+        id: job.id,
+        title: job.title,
+        employer: job.employer,
+      });
       
       try {
         // Mark as processing
@@ -119,6 +149,8 @@ export async function runPipeline(config: Partial<PipelineConfig> = {}): Promise
         
         // Generate tailored summary
         console.log('   Generating summary...');
+        progressHelpers.generatingSummary({ title: job.title, employer: job.employer });
+        
         const summaryResult = await generateSummary(
           job.jobDescription || '',
           profile
@@ -136,6 +168,8 @@ export async function runPipeline(config: Partial<PipelineConfig> = {}): Promise
         
         // Generate PDF
         console.log('   Generating PDF...');
+        progressHelpers.generatingPdf({ title: job.title, employer: job.employer });
+        
         const pdfResult = await generatePdf(
           job.id,
           summaryResult.summary!,
@@ -150,10 +184,11 @@ export async function runPipeline(config: Partial<PipelineConfig> = {}): Promise
         // Mark as ready
         await jobsRepo.updateJob(job.id, {
           status: 'ready',
-          pdfPath: pdfResult.pdfPath ?? null,
+          pdfPath: pdfResult.pdfPath ?? undefined,
         });
         
         processed++;
+        progressHelpers.jobComplete(processed, topJobs.length);
         console.log(`   ✅ Ready for review!`);
         
       } catch (error) {
@@ -173,6 +208,7 @@ export async function runPipeline(config: Partial<PipelineConfig> = {}): Promise
     console.log(`   Jobs discovered: ${created}`);
     console.log(`   Jobs processed: ${processed}`);
     
+    progressHelpers.complete(created, processed);
     isPipelineRunning = false;
     
     return {
@@ -190,6 +226,7 @@ export async function runPipeline(config: Partial<PipelineConfig> = {}): Promise
       errorMessage: message,
     });
     
+    progressHelpers.failed(message);
     isPipelineRunning = false;
     
     console.error('\n❌ Pipeline failed:', message);
@@ -250,7 +287,7 @@ export async function processJob(jobId: string): Promise<{
     // Mark as ready
     await jobsRepo.updateJob(job.id, {
       status: 'ready',
-      pdfPath: pdfResult.pdfPath ?? null,
+      pdfPath: pdfResult.pdfPath ?? undefined,
     });
     
     console.log('   ✅ Done!');

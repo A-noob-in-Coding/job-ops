@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import type { Job, JobStatus } from '../shared/types';
-import { Header, Stats, JobList, ToastContainer, Toast } from './components';
+import { Header, Stats, JobList, ToastContainer, Toast, PipelineProgress } from './components';
 import * as api from './api';
 
 export const App: React.FC = () => {
@@ -158,6 +158,8 @@ export const App: React.FC = () => {
       />
       
       <main className="container" style={{ paddingBottom: 'var(--space-12)' }}>
+        <PipelineProgress isRunning={isPipelineRunning} />
+        
         <Stats stats={stats} />
         
         <JobList
