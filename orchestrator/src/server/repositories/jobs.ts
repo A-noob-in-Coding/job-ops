@@ -38,6 +38,14 @@ export async function getJobByUrl(jobUrl: string): Promise<Job | null> {
 }
 
 /**
+ * Get all known job URLs (for deduplication / crawler optimizations).
+ */
+export async function getAllJobUrls(): Promise<string[]> {
+  const rows = await db.select({ jobUrl: jobs.jobUrl }).from(jobs);
+  return rows.map(r => r.jobUrl);
+}
+
+/**
  * Create a new job (or return existing if URL matches).
  */
 export async function createJob(input: CreateJobInput): Promise<Job> {

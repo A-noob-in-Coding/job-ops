@@ -6,12 +6,13 @@
 import { spawn } from 'child_process';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { readdir, readFile } from 'fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'fs/promises';
 import type { CreateJobInput } from '../../shared/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CRAWLER_DIR = join(__dirname, '../../../../job-extractor');
 const STORAGE_DIR = join(CRAWLER_DIR, 'storage/datasets/default');
+const JOBOPS_STORAGE_DIR = join(CRAWLER_DIR, 'storage/jobops');
 
 export interface CrawlerResult {
   success: boolean;
@@ -19,15 +20,33 @@ export interface CrawlerResult {
   error?: string;
 }
 
+export interface RunCrawlerOptions {
+  /**
+   * List of job page URLs already present in the orchestrator DB.
+   * Used by the crawler to avoid expensive/undesired interactions (e.g. apply button click).
+   */
+  existingJobUrls?: string[];
+}
+
+async function writeExistingJobUrlsFile(existingJobUrls: string[] | undefined): Promise<string | null> {
+  if (!existingJobUrls || existingJobUrls.length === 0) return null;
+  await mkdir(JOBOPS_STORAGE_DIR, { recursive: true });
+  const filePath = join(JOBOPS_STORAGE_DIR, 'existing-job-urls.json');
+  await writeFile(filePath, JSON.stringify(existingJobUrls), 'utf-8');
+  return filePath;
+}
+
 /**
  * Run the job-extractor crawler and return discovered jobs.
  */
-export async function runCrawler(): Promise<CrawlerResult> {
+export async function runCrawler(options: RunCrawlerOptions = {}): Promise<CrawlerResult> {
   console.log('🕷️ Starting job crawler...');
   
   try {
     // Clear previous results
     await clearStorageDataset();
+
+    const existingJobUrlsFile = await writeExistingJobUrlsFile(options.existingJobUrls);
     
     // Run the crawler
     await new Promise<void>((resolve, reject) => {
@@ -35,6 +54,11 @@ export async function runCrawler(): Promise<CrawlerResult> {
         cwd: CRAWLER_DIR,
         shell: true,
         stdio: 'inherit',
+        env: {
+          ...process.env,
+          JOBOPS_SKIP_APPLY_FOR_EXISTING: '1',
+          ...(existingJobUrlsFile ? { JOBOPS_EXISTING_JOB_URLS_FILE: existingJobUrlsFile } : {}),
+        },
       });
       
       child.on('close', (code) => {

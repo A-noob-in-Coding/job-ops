@@ -72,7 +72,8 @@ export async function runPipeline(config: Partial<PipelineConfig> = {}): Promise
     // Step 2: Run crawler
     console.log('\n🕷️ Running crawler...');
     progressHelpers.startCrawling();
-    const crawlerResult = await runCrawler();
+    const existingJobUrls = await jobsRepo.getAllJobUrls();
+    const crawlerResult = await runCrawler({ existingJobUrls });
     
     if (!crawlerResult.success) {
       throw new Error(`Crawler failed: ${crawlerResult.error}`);

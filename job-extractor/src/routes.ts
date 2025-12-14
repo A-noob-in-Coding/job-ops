@@ -1,4 +1,47 @@
 import { createPlaywrightRouter, log } from "crawlee";
+import { readFileSync } from "node:fs";
+
+function normalizeUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    url.hash = "";
+    // Keep search params (some sites encode job IDs there); just normalize trailing slash.
+    const normalized = url.toString().replace(/\/$/, "");
+    return normalized;
+  } catch {
+    return raw.replace(/\/$/, "");
+  }
+}
+
+function getExistingJobUrlSet(): Set<string> {
+  const filePath = process.env.JOBOPS_EXISTING_JOB_URLS_FILE;
+  const raw =
+    filePath
+      ? (() => {
+          try {
+            return readFileSync(filePath, "utf-8");
+          } catch {
+            return null;
+          }
+        })()
+      : process.env.JOBOPS_EXISTING_JOB_URLS;
+
+  if (!raw) return new Set();
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    const normalized = parsed
+      .map((u) => normalizeUrl(typeof u === "string" ? u : null))
+      .filter((u): u is string => Boolean(u));
+    return new Set(normalized);
+  } catch {
+    return new Set();
+  }
+}
+
+const SKIP_APPLY_FOR_EXISTING = process.env.JOBOPS_SKIP_APPLY_FOR_EXISTING === "1";
+const EXISTING_JOB_URLS = getExistingJobUrlSet();
 
 interface Job {
   title: string | null;
@@ -37,6 +80,8 @@ router.addHandler(
 
     const articles = await page.locator("article[wire\\:key]").all();
     const jobs: Job[] = [];
+    let skippedKnownJobs = 0;
+    let enqueuedJobs = 0;
 
     console.log(`${articles.length} jobs found`);
 
@@ -117,17 +162,33 @@ router.addHandler(
 
       // append more links to crawl: single job pages
       if (jobUrl) {
-        await enqueueLinks({
-          urls: [jobUrl],
-          userData: {
-            ...jobs[jobs.length - 1],
-            label: "gradcracker-single-job-page"
-          },
-        });
+        const jobUrlNormalized = normalizeUrl(jobUrl);
+        const isKnownJob =
+          SKIP_APPLY_FOR_EXISTING &&
+          jobUrlNormalized !== null &&
+          EXISTING_JOB_URLS.has(jobUrlNormalized);
+
+        if (isKnownJob) {
+          skippedKnownJobs++;
+        } else {
+          await enqueueLinks({
+            urls: [jobUrl],
+            userData: {
+              ...jobs[jobs.length - 1],
+              label: "gradcracker-single-job-page"
+            },
+          });
+          enqueuedJobs++;
+        }
       }
     }
 
     log.info(`Extracted ${jobs.length} jobs`);
+    if (SKIP_APPLY_FOR_EXISTING && skippedKnownJobs > 0) {
+      log.info(
+        `Skipping ${skippedKnownJobs} already-known job pages; enqueued ${enqueuedJobs} new job pages.`
+      );
+    }
   }
 );
 
@@ -149,10 +210,16 @@ router.addHandler(
     const applyButton = page.locator('a[dusk="apply-button"]');
     const hasApplyButton = (await applyButton.count()) > 0;
 
+    const requestUrlNormalized = normalizeUrl(request.url);
+    const isKnownJob =
+      SKIP_APPLY_FOR_EXISTING &&
+      requestUrlNormalized !== null &&
+      EXISTING_JOB_URLS.has(requestUrlNormalized);
+
     let applicationLink: string | null = null;
     let spawnedPage: typeof page | null = null;
 
-    if (hasApplyButton) {
+    if (hasApplyButton && !isKnownJob) {
       const originalUrl = page.url();
 
       // Prefer page-scoped popup detection. Using the browser context's "page" event
@@ -224,8 +291,10 @@ router.addHandler(
           await spawnedPage.close().catch(() => null);
         }
       }
-    } else {
+    } else if (!hasApplyButton) {
       log.warning(`Apply button not found on page: ${request.url}`);
+    } else {
+      log.info(`Skipping apply click for known job: ${request.url}`);
     }
 
     await pushData({
