@@ -144,6 +144,7 @@ async function readCrawledJobs(): Promise<CreateJobInput[]> {
       
       // Map crawler output to our job input format
       jobs.push({
+        source: 'gradcracker',
         title: data.title || 'Unknown Title',
         employer: data.employer || 'Unknown Employer',
         employerUrl: data.employerUrl,

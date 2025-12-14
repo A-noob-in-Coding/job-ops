@@ -25,6 +25,7 @@ const sqlite = new Database(DB_PATH);
 const migrations = [
   `CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
+    source TEXT NOT NULL DEFAULT 'gradcracker',
     title TEXT NOT NULL,
     employer TEXT NOT NULL,
     employer_url TEXT,
@@ -60,6 +61,10 @@ const migrations = [
     error_message TEXT
   )`,
 
+  // Add source column for existing databases (safe to skip if already present)
+  `ALTER TABLE jobs ADD COLUMN source TEXT NOT NULL DEFAULT 'gradcracker'`,
+  `UPDATE jobs SET source = 'gradcracker' WHERE source IS NULL OR source = ''`,
+
   `CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)`,
   `CREATE INDEX IF NOT EXISTS idx_jobs_discovered_at ON jobs(discovered_at)`,
   `CREATE INDEX IF NOT EXISTS idx_pipeline_runs_started_at ON pipeline_runs(started_at)`,
@@ -72,6 +77,16 @@ for (const migration of migrations) {
     sqlite.exec(migration);
     console.log('✅ Migration applied');
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const isDuplicateSourceColumn =
+      migration.includes('ALTER TABLE jobs ADD COLUMN source') &&
+      message.toLowerCase().includes('duplicate column name');
+
+    if (isDuplicateSourceColumn) {
+      console.log('↩️ Migration skipped (source column already exists)');
+      continue;
+    }
+
     console.error('❌ Migration failed:', error);
     process.exit(1);
   }

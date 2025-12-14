@@ -60,6 +60,7 @@ export async function createJob(input: CreateJobInput): Promise<Job> {
   
   await db.insert(jobs).values({
     id,
+    source: input.source,
     title: input.title,
     employer: input.employer,
     employerUrl: input.employerUrl ?? null,
@@ -171,6 +172,7 @@ export async function getJobsForProcessing(limit: number = 10): Promise<Job[]> {
 function mapRowToJob(row: typeof jobs.$inferSelect): Job {
   return {
     id: row.id,
+    source: row.source as Job['source'],
     title: row.title,
     employer: row.employer,
     employerUrl: row.employerUrl,

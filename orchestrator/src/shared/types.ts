@@ -10,10 +10,14 @@ export type JobStatus =
   | 'rejected'        // User rejected this job
   | 'expired';        // Deadline passed
 
+export type JobSource =
+  | 'gradcracker';
+
 export interface Job {
   id: string;
   
   // From crawler
+  source: JobSource;
   title: string;
   employer: string;
   employerUrl: string | null;
@@ -44,6 +48,7 @@ export interface Job {
 }
 
 export interface CreateJobInput {
+  source: JobSource;
   title: string;
   employer: string;
   employerUrl?: string;

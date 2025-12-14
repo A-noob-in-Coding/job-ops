@@ -16,6 +16,7 @@ import {
   XCircle,
 } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Job } from "../../shared/types";
@@ -52,6 +53,10 @@ export const JobCard: React.FC<JobCardProps> = ({
   onProcess,
   isProcessing,
 }) => {
+  const sourceLabel: Record<Job["source"], string> = {
+    gradcracker: "Gradcracker",
+  };
+
   const hasPdf = !!job.pdfPath;
   const canApply = job.status === "ready";
   const canProcess = job.status === "discovered";
@@ -72,6 +77,9 @@ export const JobCard: React.FC<JobCardProps> = ({
 
           <div className="flex flex-wrap items-center gap-3">
             <ScoreIndicator score={job.suitabilityScore} />
+            <Badge variant="outline" className="uppercase tracking-wide">
+              {sourceLabel[job.source]}
+            </Badge>
             <StatusBadge status={job.status} />
           </div>
         </div>
@@ -181,4 +189,3 @@ export const JobCard: React.FC<JobCardProps> = ({
     </Card>
   );
 };
-
