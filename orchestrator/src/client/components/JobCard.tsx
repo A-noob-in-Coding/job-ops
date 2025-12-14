@@ -2,21 +2,25 @@
  * Individual job card component.
  */
 
-import React from 'react';
-import type { Job } from '../../shared/types';
-import { StatusBadge } from './StatusBadge';
-import { ScoreIndicator } from './ScoreIndicator';
+import React from "react";
 import {
-  MapPinIcon,
-  CalendarIcon,
-  DollarIcon,
-  GraduationCapIcon,
-  ExternalLinkIcon,
-  DownloadIcon,
-  CheckCircleIcon,
-  XCircleIcon,
-  RefreshIcon,
-} from './Icons';
+  Calendar,
+  CheckCircle2,
+  DollarSign,
+  Download,
+  ExternalLink,
+  GraduationCap,
+  Loader2,
+  MapPin,
+  RefreshCcw,
+  XCircle,
+} from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import type { Job } from "../../shared/types";
+import { ScoreIndicator } from "./ScoreIndicator";
+import { StatusBadge } from "./StatusBadge";
 
 interface JobCardProps {
   job: Job;
@@ -26,6 +30,21 @@ interface JobCardProps {
   isProcessing: boolean;
 }
 
+const formatDate = (dateStr: string | null) => {
+  if (!dateStr) return null;
+  try {
+    return new Date(dateStr).toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return dateStr;
+  }
+};
+
+const safeFilenamePart = (value: string) => value.replace(/[^a-z0-9]/gi, "_");
+
 export const JobCard: React.FC<JobCardProps> = ({
   job,
   onApply,
@@ -33,155 +52,133 @@ export const JobCard: React.FC<JobCardProps> = ({
   onProcess,
   isProcessing,
 }) => {
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return null;
-    try {
-      return new Date(dateStr).toLocaleDateString('en-GB', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      });
-    } catch {
-      return dateStr;
-    }
-  };
-  
   const hasPdf = !!job.pdfPath;
-  const canApply = job.status === 'ready';
-  const canProcess = job.status === 'discovered';
-  const canReject = ['discovered', 'ready'].includes(job.status);
-  
+  const canApply = job.status === "ready";
+  const canProcess = job.status === "discovered";
+  const canReject = ["discovered", "ready"].includes(job.status);
+
+  const jobLink = job.applicationLink || job.jobUrl;
+  const pdfHref = `/pdfs/resume_${job.id}.pdf`;
+  const deadline = formatDate(job.deadline);
+
   return (
-    <article className="job-card">
-      <div className="job-card-header">
-        <div>
-          <h3 className="job-title">{job.title}</h3>
-          <p className="job-employer">{job.employer}</p>
+    <Card>
+      <CardHeader className="space-y-3">
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+          <div className="min-w-0 space-y-1">
+            <CardTitle className="text-base leading-tight">{job.title}</CardTitle>
+            <div className="text-sm text-muted-foreground">{job.employer}</div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <ScoreIndicator score={job.suitabilityScore} />
+            <StatusBadge status={job.status} />
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <ScoreIndicator score={job.suitabilityScore} />
-          <StatusBadge status={job.status} />
+
+        <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
+          {job.location && (
+            <span className="flex items-center gap-1">
+              <MapPin className="h-4 w-4" />
+              {job.location}
+            </span>
+          )}
+          {deadline && (
+            <span className="flex items-center gap-1">
+              <Calendar className="h-4 w-4" />
+              {deadline}
+            </span>
+          )}
+          {job.salary && (
+            <span className="flex items-center gap-1">
+              <DollarSign className="h-4 w-4" />
+              {job.salary}
+            </span>
+          )}
+          {job.degreeRequired && (
+            <span className="flex items-center gap-1">
+              <GraduationCap className="h-4 w-4" />
+              {job.degreeRequired}
+            </span>
+          )}
         </div>
-      </div>
-      
-      <div className="job-meta">
-        {job.location && (
-          <span className="job-meta-item">
-            <MapPinIcon />
-            {job.location}
-          </span>
-        )}
-        {job.deadline && (
-          <span className="job-meta-item">
-            <CalendarIcon />
-            {job.deadline}
-          </span>
-        )}
-        {job.salary && (
-          <span className="job-meta-item">
-            <DollarIcon />
-            {job.salary}
-          </span>
-        )}
-        {job.degreeRequired && (
-          <span className="job-meta-item">
-            <GraduationCapIcon />
-            {job.degreeRequired}
-          </span>
-        )}
-      </div>
-      
-      {job.suitabilityReason && (
-        <p style={{ 
-          marginTop: 'var(--space-3)', 
-          fontSize: '0.8125rem',
-          color: 'var(--color-text-secondary)',
-          fontStyle: 'italic',
-        }}>
-          "{job.suitabilityReason}"
-        </p>
+      </CardHeader>
+
+      {(job.suitabilityReason || canApply || canReject || canProcess || hasPdf) && (
+        <CardContent className="space-y-3">
+          {job.suitabilityReason && (
+            <p className="text-sm italic text-muted-foreground">
+              &quot;{job.suitabilityReason}&quot;
+            </p>
+          )}
+        </CardContent>
       )}
-      
-      <div className="job-actions">
-        {/* View job posting */}
-        <a
-          href={job.applicationLink || job.jobUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="btn btn-ghost"
-        >
-          <ExternalLinkIcon size={16} />
-          View Job
-        </a>
-        
-        {/* View PDF in browser */}
-        {hasPdf && (
-          <a
-            href={`/pdfs/resume_${job.id}.pdf`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn btn-ghost"
-          >
-            <ExternalLinkIcon size={16} />
-            View PDF
+
+      <CardFooter className="flex flex-wrap gap-2">
+        <Button asChild variant="outline" size="sm">
+          <a href={jobLink} target="_blank" rel="noopener noreferrer">
+            <ExternalLink className="mr-2 h-4 w-4" />
+            View Job
           </a>
-        )}
-        
-        {/* Download PDF */}
+        </Button>
+
         {hasPdf && (
-          <a
-            href={`/pdfs/resume_${job.id}.pdf`}
-            download={`resume_${job.employer.replace(/[^a-z0-9]/gi, '_')}_${job.title.replace(/[^a-z0-9]/gi, '_')}.pdf`}
-            className="btn btn-ghost"
-          >
-            <DownloadIcon size={16} />
-            Download
-          </a>
+          <Button asChild variant="outline" size="sm">
+            <a href={pdfHref} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="mr-2 h-4 w-4" />
+              View PDF
+            </a>
+          </Button>
         )}
-        
-        {/* Process job */}
+
+        {hasPdf && (
+          <Button asChild variant="outline" size="sm">
+            <a
+              href={pdfHref}
+              download={`resume_${safeFilenamePart(job.employer)}_${safeFilenamePart(job.title)}.pdf`}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Download
+            </a>
+          </Button>
+        )}
+
         {canProcess && (
-          <button
-            className="btn btn-ghost"
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => onProcess(job.id)}
             disabled={isProcessing}
           >
             {isProcessing ? (
               <>
-                <div className="spinner" />
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Processing...
               </>
             ) : (
               <>
-                <RefreshIcon size={16} />
+                <RefreshCcw className="mr-2 h-4 w-4" />
                 Generate Resume
               </>
             )}
-          </button>
+          </Button>
         )}
-        
-        {/* Reject */}
+
         {canReject && (
-          <button
-            className="btn btn-danger"
-            onClick={() => onReject(job.id)}
-          >
-            <XCircleIcon size={16} />
+          <Button variant="destructive" size="sm" onClick={() => onReject(job.id)}>
+            <XCircle className="mr-2 h-4 w-4" />
             Skip
-          </button>
+          </Button>
         )}
-        
-        {/* Mark as applied */}
+
         {canApply && (
-          <button
-            className="btn btn-success"
-            onClick={() => onApply(job.id)}
-          >
-            <CheckCircleIcon size={16} />
+          <Button size="sm" onClick={() => onApply(job.id)}>
+            <CheckCircle2 className="mr-2 h-4 w-4" />
             Mark Applied
-          </button>
+          </Button>
         )}
-      </div>
-    </article>
+      </CardFooter>
+    </Card>
   );
 };
+

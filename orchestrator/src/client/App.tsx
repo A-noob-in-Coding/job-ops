@@ -2,13 +2,15 @@
  * Main App component.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import type { Job, JobStatus } from '../shared/types';
-import { Header, Stats, JobList, ToastContainer, Toast, PipelineProgress } from './components';
-import * as api from './api';
+import React, { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+
+import { Toaster } from "@/components/ui/sonner";
+import type { Job, JobStatus } from "../shared/types";
+import { Header, JobList, PipelineProgress, Stats } from "./components";
+import * as api from "./api";
 
 export const App: React.FC = () => {
-  // State
   const [jobs, setJobs] = useState<Job[]>([]);
   const [stats, setStats] = useState<Record<JobStatus, number>>({
     discovered: 0,
@@ -22,19 +24,7 @@ export const App: React.FC = () => {
   const [isPipelineRunning, setIsPipelineRunning] = useState(false);
   const [processingJobId, setProcessingJobId] = useState<string | null>(null);
   const [isProcessingAll, setIsProcessingAll] = useState(false);
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  
-  // Toast helpers
-  const addToast = useCallback((message: string, type: Toast['type']) => {
-    const id = Math.random().toString(36).slice(2);
-    setToasts(prev => [...prev, { id, message, type }]);
-  }, []);
-  
-  const dismissToast = useCallback((id: string) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  }, []);
-  
-  // Load jobs
+
   const loadJobs = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -42,14 +32,13 @@ export const App: React.FC = () => {
       setJobs(data.jobs);
       setStats(data.byStatus);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to load jobs';
-      addToast(message, 'error');
+      const message = error instanceof Error ? error.message : "Failed to load jobs";
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
-  }, [addToast]);
-  
-  // Check pipeline status
+  }, []);
+
   const checkPipelineStatus = useCallback(async () => {
     try {
       const status = await api.getPipelineStatus();
@@ -58,121 +47,121 @@ export const App: React.FC = () => {
       // Ignore errors
     }
   }, []);
-  
-  // Initial load
+
   useEffect(() => {
     loadJobs();
     checkPipelineStatus();
-    
-    // Poll for updates
+
     const interval = setInterval(() => {
       loadJobs();
       checkPipelineStatus();
     }, 10000);
-    
+
     return () => clearInterval(interval);
   }, [loadJobs, checkPipelineStatus]);
-  
-  // Run pipeline
+
   const handleRunPipeline = async () => {
     try {
       setIsPipelineRunning(true);
       await api.runPipeline();
-      addToast('Pipeline started! This may take a few minutes.', 'info');
-      
-      // Poll more frequently while running
+      toast.message("Pipeline started", { description: "This may take a few minutes." });
+
       const pollInterval = setInterval(async () => {
-        const status = await api.getPipelineStatus();
-        if (!status.isRunning) {
-          clearInterval(pollInterval);
-          setIsPipelineRunning(false);
-          loadJobs();
-          addToast('Pipeline completed!', 'success');
+        try {
+          const status = await api.getPipelineStatus();
+          if (!status.isRunning) {
+            clearInterval(pollInterval);
+            setIsPipelineRunning(false);
+            await loadJobs();
+            toast.success("Pipeline completed");
+          }
+        } catch {
+          // Ignore errors
         }
       }, 5000);
     } catch (error) {
       setIsPipelineRunning(false);
-      const message = error instanceof Error ? error.message : 'Failed to start pipeline';
-      addToast(message, 'error');
+      const message = error instanceof Error ? error.message : "Failed to start pipeline";
+      toast.error(message);
     }
   };
-  
-  // Process single job
+
   const handleProcess = async (jobId: string) => {
     try {
       setProcessingJobId(jobId);
       await api.processJob(jobId);
-      addToast('Resume generated successfully!', 'success');
-      loadJobs();
+      toast.success("Resume generated successfully");
+      await loadJobs();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to process job';
-      addToast(message, 'error');
+      const message = error instanceof Error ? error.message : "Failed to process job";
+      toast.error(message);
     } finally {
       setProcessingJobId(null);
     }
   };
-  
-  // Mark as applied
+
   const handleApply = async (jobId: string) => {
     try {
       await api.markAsApplied(jobId);
-      addToast('Marked as applied! ✅', 'success');
-      loadJobs();
+      toast.success("Marked as applied");
+      await loadJobs();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to mark as applied';
-      addToast(message, 'error');
+      const message = error instanceof Error ? error.message : "Failed to mark as applied";
+      toast.error(message);
     }
   };
-  
-  // Reject job
+
   const handleReject = async (jobId: string) => {
     try {
       await api.rejectJob(jobId);
-      addToast('Job skipped', 'info');
-      loadJobs();
+      toast.message("Job skipped");
+      await loadJobs();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to reject job';
-      addToast(message, 'error');
+      const message = error instanceof Error ? error.message : "Failed to reject job";
+      toast.error(message);
     }
   };
-  
-  // Clear database
+
   const handleClearDatabase = async () => {
     try {
       const result = await api.clearDatabase();
-      addToast(`Database cleared! Deleted ${result.jobsDeleted} jobs.`, 'success');
-      loadJobs();
+      toast.success("Database cleared", { description: `Deleted ${result.jobsDeleted} jobs.` });
+      await loadJobs();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to clear database';
-      addToast(message, 'error');
+      const message = error instanceof Error ? error.message : "Failed to clear database";
+      toast.error(message);
     }
   };
-  
-  // Process all discovered jobs
+
   const handleProcessAll = async () => {
     try {
       setIsProcessingAll(true);
       const result = await api.processAllDiscovered();
-      addToast(`Processing ${result.count} jobs in background...`, 'info');
-      
-      // Poll for completion
+      toast.message("Processing jobs", { description: `Processing ${result.count} jobs in background...` });
+
       const pollInterval = setInterval(async () => {
-        await loadJobs();
-        const currentStats = await api.getJobs();
-        const stillDiscovered = currentStats.byStatus.discovered + currentStats.byStatus.processing;
-        if (stillDiscovered === 0) {
-          clearInterval(pollInterval);
-          setIsProcessingAll(false);
-          addToast('All jobs processed!', 'success');
+        try {
+          const data = await api.getJobs();
+          setJobs(data.jobs);
+          setStats(data.byStatus);
+
+          const stillDiscovered = data.byStatus.discovered + data.byStatus.processing;
+          if (stillDiscovered === 0) {
+            clearInterval(pollInterval);
+            setIsProcessingAll(false);
+            toast.success("All jobs processed");
+          }
+        } catch {
+          // Ignore errors
         }
       }, 3000);
     } catch (error) {
       setIsProcessingAll(false);
-      const message = error instanceof Error ? error.message : 'Failed to process jobs';
-      addToast(message, 'error');
+      const message = error instanceof Error ? error.message : "Failed to process jobs";
+      toast.error(message);
     }
   };
-  
+
   return (
     <>
       <Header
@@ -182,12 +171,10 @@ export const App: React.FC = () => {
         isPipelineRunning={isPipelineRunning}
         isLoading={isLoading}
       />
-      
-      <main className="container" style={{ paddingBottom: 'var(--space-12)' }}>
+
+      <main className="container mx-auto max-w-7xl space-y-6 px-4 py-6 pb-12">
         <PipelineProgress isRunning={isPipelineRunning} />
-        
         <Stats stats={stats} />
-        
         <JobList
           jobs={jobs}
           onApply={handleApply}
@@ -198,8 +185,9 @@ export const App: React.FC = () => {
           isProcessingAll={isProcessingAll}
         />
       </main>
-      
-      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      <Toaster position="bottom-right" richColors closeButton />
     </>
   );
 };
+

@@ -2,10 +2,14 @@
  * Job list with filtering tabs.
  */
 
-import React, { useState } from 'react';
-import type { Job, JobStatus } from '../../shared/types';
-import { JobCard } from './JobCard';
-import { RefreshIcon } from './Icons';
+import React, { useMemo, useState } from "react";
+import { Loader2, RefreshCcw } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { Job, JobStatus } from "../../shared/types";
+import { JobCard } from "./JobCard";
 
 interface JobListProps {
   jobs: Job[];
@@ -17,14 +21,21 @@ interface JobListProps {
   isProcessingAll: boolean;
 }
 
-type FilterTab = 'ready' | 'discovered' | 'applied' | 'all';
+type FilterTab = "ready" | "discovered" | "applied" | "all";
 
 const tabs: Array<{ id: FilterTab; label: string; statuses: JobStatus[] }> = [
-  { id: 'ready', label: '✨ Ready to Apply', statuses: ['ready'] },
-  { id: 'discovered', label: '🔍 Discovered', statuses: ['discovered', 'processing'] },
-  { id: 'applied', label: '✅ Applied', statuses: ['applied'] },
-  { id: 'all', label: '📋 All Jobs', statuses: [] },
+  { id: "ready", label: "Ready", statuses: ["ready"] },
+  { id: "discovered", label: "Discovered", statuses: ["discovered", "processing"] },
+  { id: "applied", label: "Applied", statuses: ["applied"] },
+  { id: "all", label: "All Jobs", statuses: [] },
 ];
+
+const emptyStateCopy: Record<FilterTab, string> = {
+  ready: "Run the pipeline to discover and process new jobs.",
+  discovered: "All discovered jobs have been processed.",
+  applied: "You haven't applied to any jobs yet.",
+  all: "No jobs in the system yet. Run the pipeline to get started!",
+};
 
 export const JobList: React.FC<JobListProps> = ({
   jobs,
@@ -35,86 +46,104 @@ export const JobList: React.FC<JobListProps> = ({
   processingJobId,
   isProcessingAll,
 }) => {
-  const [activeTab, setActiveTab] = useState<FilterTab>('ready');
-  
-  const filteredJobs = React.useMemo(() => {
-    const tab = tabs.find(t => t.id === activeTab);
-    if (!tab || tab.statuses.length === 0) {
-      return jobs;
+  const [activeTab, setActiveTab] = useState<FilterTab>("ready");
+
+  const counts = useMemo(() => {
+    const byTab: Record<FilterTab, number> = {
+      ready: 0,
+      discovered: 0,
+      applied: 0,
+      all: jobs.length,
+    };
+
+    for (const job of jobs) {
+      if (job.status === "ready") byTab.ready += 1;
+      if (job.status === "applied") byTab.applied += 1;
+      if (job.status === "discovered" || job.status === "processing") byTab.discovered += 1;
     }
-    return jobs.filter(job => tab.statuses.includes(job.status));
-  }, [jobs, activeTab]);
-  
-  const discoveredCount = jobs.filter(j => j.status === 'discovered').length;
-  
+
+    return byTab;
+  }, [jobs]);
+
+  const jobsForTab = useMemo(() => {
+    const map = new Map<FilterTab, Job[]>();
+
+    for (const tab of tabs) {
+      if (tab.statuses.length === 0) {
+        map.set(tab.id, jobs);
+      } else {
+        map.set(tab.id, jobs.filter((job) => tab.statuses.includes(job.status)));
+      }
+    }
+
+    return map;
+  }, [jobs]);
+
   return (
-    <div>
-      <div className="tabs" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
-        <div style={{ display: 'flex', gap: 'var(--space-2)', flex: 1 }}>
-          {tabs.map(tab => {
-            const count = tab.statuses.length === 0
-              ? jobs.length
-              : jobs.filter(j => tab.statuses.includes(j.status)).length;
-            
-            return (
-              <button
-                key={tab.id}
-                className={`tab ${activeTab === tab.id ? 'active' : ''}`}
-                onClick={() => setActiveTab(tab.id)}
-              >
-                {tab.label} ({count})
-              </button>
-            );
-          })}
-        </div>
-        
-        {activeTab === 'discovered' && discoveredCount > 0 && (
-          <button
-            className="btn btn-primary"
-            onClick={onProcessAll}
-            disabled={isProcessingAll}
-            style={{ marginLeft: 'auto' }}
-          >
+    <Tabs
+      value={activeTab}
+      onValueChange={(value) => setActiveTab(value as FilterTab)}
+      className="space-y-4"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <TabsList className="w-full sm:w-auto">
+          {tabs.map((tab) => (
+            <TabsTrigger key={tab.id} value={tab.id} className="flex-1 sm:flex-none">
+              {tab.label}
+              <span className="ml-2 text-xs tabular-nums text-muted-foreground">
+                ({counts[tab.id]})
+              </span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        {activeTab === "discovered" && counts.discovered > 0 && (
+          <Button onClick={onProcessAll} disabled={isProcessingAll} size="sm">
             {isProcessingAll ? (
               <>
-                <div className="spinner" />
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Processing...
               </>
             ) : (
               <>
-                <RefreshIcon size={16} />
-                Process All ({discoveredCount})
+                <RefreshCcw className="mr-2 h-4 w-4" />
+                Process All ({counts.discovered})
               </>
             )}
-          </button>
+          </Button>
         )}
       </div>
-      
-      {filteredJobs.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-state-icon">📭</div>
-          <h3 className="empty-state-title">No jobs found</h3>
-          <p>
-            {activeTab === 'ready' && 'Run the pipeline to discover and process new jobs.'}
-            {activeTab === 'discovered' && 'All discovered jobs have been processed.'}
-            {activeTab === 'applied' && "You haven't applied to any jobs yet."}
-            {activeTab === 'all' && 'No jobs in the system yet. Run the pipeline to get started!'}
-          </p>
-        </div>
-      ) : (
-        <div className="job-list">
-          {filteredJobs.map(job => (
-            <JobCard
-              key={job.id}
-              job={job}
-              onApply={onApply}
-              onReject={onReject}
-              onProcess={onProcess}
-              isProcessing={processingJobId === job.id}
-            />
-          ))}
-        </div>
-      )}
-    </div>
+
+      {tabs.map((tab) => {
+        const filteredJobs = jobsForTab.get(tab.id) ?? [];
+
+        return (
+          <TabsContent key={tab.id} value={tab.id} className="space-y-4">
+            {filteredJobs.length === 0 ? (
+              <Card className="border-dashed bg-muted/20">
+                <CardContent className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+                  <div className="text-base font-semibold">No jobs found</div>
+                  <p className="max-w-xl text-sm text-muted-foreground">{emptyStateCopy[tab.id]}</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-4">
+                {filteredJobs.map((job) => (
+                  <JobCard
+                    key={job.id}
+                    job={job}
+                    onApply={onApply}
+                    onReject={onReject}
+                    onProcess={onProcess}
+                    isProcessing={processingJobId === job.id}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        );
+      })}
+    </Tabs>
   );
 };
+

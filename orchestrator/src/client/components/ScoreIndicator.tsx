@@ -2,7 +2,9 @@
  * Suitability score display component.
  */
 
-import React from 'react';
+import React from "react";
+
+import { Progress } from "@/components/ui/progress";
 
 interface ScoreIndicatorProps {
   score: number | null;
@@ -10,28 +12,14 @@ interface ScoreIndicatorProps {
 
 export const ScoreIndicator: React.FC<ScoreIndicatorProps> = ({ score }) => {
   if (score === null) {
-    return (
-      <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>
-        Not scored
-      </span>
-    );
+    return <span className="text-sm text-muted-foreground">Not scored</span>;
   }
-  
-  const getScoreClass = () => {
-    if (score >= 70) return 'score-high';
-    if (score >= 40) return 'score-medium';
-    return 'score-low';
-  };
-  
+
   return (
-    <div className={`score ${getScoreClass()}`}>
-      <div className="score-bar">
-        <div 
-          className="score-bar-fill" 
-          style={{ width: `${score}%` }} 
-        />
-      </div>
-      <span>{score}</span>
+    <div className="flex items-center gap-2">
+      <Progress value={score} className="h-2 w-20" />
+      <span className="text-sm tabular-nums text-muted-foreground">{score}</span>
     </div>
   );
 };
+

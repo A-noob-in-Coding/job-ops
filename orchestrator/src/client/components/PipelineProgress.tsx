@@ -2,10 +2,17 @@
  * Live pipeline progress display component.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from "react";
+import { Loader2 } from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 
 interface PipelineProgress {
-  step: 'idle' | 'crawling' | 'importing' | 'scoring' | 'processing' | 'completed' | 'failed';
+  step: "idle" | "crawling" | "importing" | "scoring" | "processing" | "completed" | "failed";
   message: string;
   detail?: string;
   crawlingListPagesProcessed: number;
@@ -14,7 +21,7 @@ interface PipelineProgress {
   crawlingJobPagesEnqueued: number;
   crawlingJobPagesSkipped: number;
   crawlingJobPagesProcessed: number;
-  crawlingPhase?: 'list' | 'job';
+  crawlingPhase?: "list" | "job";
   crawlingCurrentUrl?: string;
   jobsDiscovered: number;
   jobsScored: number;
@@ -34,25 +41,27 @@ interface PipelineProgressProps {
   isRunning: boolean;
 }
 
-const stepLabels: Record<PipelineProgress['step'], string> = {
-  idle: 'Ready',
-  crawling: 'Crawling Jobs',
-  importing: 'Importing',
-  scoring: 'Scoring Jobs',
-  processing: 'Generating Resumes',
-  completed: 'Complete',
-  failed: 'Failed',
+const stepLabels: Record<PipelineProgress["step"], string> = {
+  idle: "Ready",
+  crawling: "Crawling",
+  importing: "Importing",
+  scoring: "Scoring",
+  processing: "Processing",
+  completed: "Complete",
+  failed: "Failed",
 };
 
-const stepColors: Record<PipelineProgress['step'], string> = {
-  idle: 'var(--color-muted)',
-  crawling: 'var(--color-info)',
-  importing: 'var(--color-info)',
-  scoring: 'var(--color-warning)',
-  processing: 'var(--color-primary-500)',
-  completed: 'var(--color-success)',
-  failed: 'var(--color-error)',
+const stepBadgeClasses: Record<PipelineProgress["step"], string> = {
+  idle: "bg-muted text-muted-foreground border-border",
+  crawling: "bg-sky-500/10 text-sky-400 border-sky-500/20",
+  importing: "bg-sky-500/10 text-sky-400 border-sky-500/20",
+  scoring: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  processing: "bg-primary/10 text-primary border-primary/20",
+  completed: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  failed: "bg-destructive/10 text-destructive border-destructive/20",
 };
+
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 export const PipelineProgress: React.FC<PipelineProgressProps> = ({ isRunning }) => {
   const [progress, setProgress] = useState<PipelineProgress | null>(null);
@@ -61,29 +70,28 @@ export const PipelineProgress: React.FC<PipelineProgressProps> = ({ isRunning })
   useEffect(() => {
     if (!isRunning) {
       setProgress(null);
+      setIsConnected(false);
       return;
     }
 
-    // Connect to SSE endpoint
-    const eventSource = new EventSource('/api/pipeline/progress');
-    
+    const eventSource = new EventSource("/api/pipeline/progress");
+
     eventSource.onopen = () => {
       setIsConnected(true);
     };
-    
+
     eventSource.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data);
-        setProgress(data);
+        setProgress(JSON.parse(event.data));
       } catch {
         // Ignore parse errors
       }
     };
-    
+
     eventSource.onerror = () => {
       setIsConnected(false);
     };
-    
+
     return () => {
       eventSource.close();
       setIsConnected(false);
@@ -94,203 +102,137 @@ export const PipelineProgress: React.FC<PipelineProgressProps> = ({ isRunning })
     return null;
   }
 
-  const step = progress?.step || 'idle';
-  const isActive = progress && step !== 'idle' && step !== 'completed' && step !== 'failed';
+  const step = progress?.step ?? "idle";
+  const isActive = step !== "idle" && step !== "completed" && step !== "failed";
 
-  // Calculate overall progress percentage
-  let percentage = 0;
-  if (progress) {
-    switch (step) {
-      case 'crawling':
+  const percentage = useMemo(() => {
+    if (!progress) return 0;
+
+    switch (progress.step) {
+      case "crawling": {
         if (progress.crawlingListPagesTotal > 0) {
-          percentage = (progress.crawlingListPagesProcessed / progress.crawlingListPagesTotal) * 15;
-        } else if (progress.crawlingListPagesProcessed > 0) {
-          percentage = 8;
-        } else {
-          percentage = 5;
+          return clamp((progress.crawlingListPagesProcessed / progress.crawlingListPagesTotal) * 15, 0, 15);
         }
-        break;
-      case 'importing':
-        percentage = 20;
-        break;
-      case 'scoring':
+        if (progress.crawlingListPagesProcessed > 0) return 8;
+        return 5;
+      }
+      case "importing":
+        return 20;
+      case "scoring": {
         if (progress.jobsScored > 0) {
-          percentage = 20 + (progress.jobsScored / Math.max(progress.jobsDiscovered, 1)) * 30;
-        } else {
-          percentage = 25;
+          return clamp(20 + (progress.jobsScored / Math.max(progress.jobsDiscovered, 1)) * 30, 20, 50);
         }
-        break;
-      case 'processing':
+        return 25;
+      }
+      case "processing": {
         if (progress.totalToProcess > 0) {
-          percentage = 50 + (progress.jobsProcessed / progress.totalToProcess) * 50;
-        } else {
-          percentage = 55;
+          return clamp(50 + (progress.jobsProcessed / progress.totalToProcess) * 50, 50, 100);
         }
-        break;
-      case 'completed':
-        percentage = 100;
-        break;
-      case 'failed':
-        percentage = 100;
-        break;
+        return 55;
+      }
+      case "completed":
+      case "failed":
+        return 100;
+      case "idle":
+      default:
+        return 0;
     }
-  }
+  }, [progress]);
+
+  const showStats = !!progress && ["crawling", "scoring", "processing", "completed"].includes(step);
 
   return (
-    <div className="pipeline-progress" style={{
-      background: 'var(--glass-background)',
-      backdropFilter: 'blur(12px)',
-      border: '1px solid var(--glass-border)',
-      borderRadius: 'var(--radius-lg)',
-      padding: 'var(--space-6)',
-      marginBottom: 'var(--space-6)',
-    }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          {isActive && (
-            <div className="spinner" style={{ width: '16px', height: '16px' }} />
-          )}
-          <span style={{ 
-            color: stepColors[step], 
-            fontWeight: '600',
-            fontSize: 'var(--font-sm)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-          }}>
-            {stepLabels[step]}
-          </span>
+    <Card>
+      <CardHeader className="space-y-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <CardTitle className="text-base">Pipeline</CardTitle>
+            <Badge variant="outline" className={cn("uppercase tracking-wide", stepBadgeClasses[step])}>
+              {stepLabels[step]}
+            </Badge>
+            <span className="truncate text-xs text-muted-foreground">
+              {isConnected ? "Live" : "Connecting…"}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            {isActive && <Loader2 className="h-4 w-4 animate-spin" />}
+            <span className="tabular-nums">{Math.round(percentage)}%</span>
+          </div>
         </div>
-        <span style={{ color: 'var(--color-muted)', fontSize: 'var(--font-xs)' }}>
-          {Math.round(percentage)}%
-        </span>
-      </div>
-      
-      {/* Progress bar */}
-      <div style={{
-        height: '6px',
-        background: 'var(--color-surface-elevated)',
-        borderRadius: '3px',
-        overflow: 'hidden',
-        marginBottom: 'var(--space-4)',
-      }}>
-        <div style={{
-          height: '100%',
-          width: `${percentage}%`,
-          background: step === 'failed' 
-            ? 'var(--color-error)' 
-            : 'linear-gradient(90deg, var(--color-primary-500), var(--color-primary-400))',
-          borderRadius: '3px',
-          transition: 'width 0.3s ease',
-        }} />
-      </div>
-      
-      {/* Message */}
+
+        <Progress value={percentage} className="h-2" />
+      </CardHeader>
+
       {progress && (
-        <div style={{ marginBottom: 'var(--space-3)' }}>
-          <p style={{ color: 'var(--color-text)', margin: 0 }}>
-            {progress.message}
-          </p>
-          {progress.detail && (
-            <p style={{ 
-              color: 'var(--color-muted)', 
-              fontSize: 'var(--font-sm)',
-              margin: 'var(--space-1) 0 0 0',
-            }}>
-              {progress.detail}
-            </p>
-          )}
-        </div>
-      )}
-      
-      {/* Stats */}
-      {progress && (step === 'crawling' || step === 'scoring' || step === 'processing' || step === 'completed') && (
-        <div style={{
-          display: 'flex',
-          gap: 'var(--space-6)',
-          paddingTop: 'var(--space-3)',
-          borderTop: '1px solid var(--glass-border)',
-          fontSize: 'var(--font-sm)',
-        }}>
-          {step === 'crawling' && (
+        <CardContent className="space-y-4">
+          <div className="space-y-1">
+            <p className="text-sm">{progress.message}</p>
+            {progress.detail && <p className="text-sm text-muted-foreground">{progress.detail}</p>}
+          </div>
+
+          {showStats && (
             <>
-              <div>
-                <span style={{ color: 'var(--color-muted)' }}>Sources: </span>
-                <span style={{ color: 'var(--color-text)', fontWeight: '500' }}>
-                  {progress.crawlingListPagesProcessed}
-                  {progress.crawlingListPagesTotal > 0 ? `/${progress.crawlingListPagesTotal}` : ''}
-                </span>
+              <Separator />
+              <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                {step === "crawling" ? (
+                  <>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Sources</div>
+                      <div className="tabular-nums">
+                        {progress.crawlingListPagesProcessed}
+                        {progress.crawlingListPagesTotal > 0 ? `/${progress.crawlingListPagesTotal}` : ""}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Pages</div>
+                      <div className="tabular-nums">
+                        {progress.crawlingJobPagesProcessed}/{Math.max(progress.crawlingJobPagesEnqueued, 0)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Enqueued</div>
+                      <div className="tabular-nums">{progress.crawlingJobPagesEnqueued}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Skipped</div>
+                      <div className="tabular-nums">{progress.crawlingJobPagesSkipped}</div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Discovered</div>
+                      <div className="tabular-nums">{progress.jobsDiscovered}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Scored</div>
+                      <div className="tabular-nums">{progress.jobsScored}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Processed</div>
+                      <div className="tabular-nums">
+                        {progress.totalToProcess > 0 ? `${progress.jobsProcessed}/${progress.totalToProcess}` : progress.jobsProcessed}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">To process</div>
+                      <div className="tabular-nums">{progress.totalToProcess}</div>
+                    </div>
+                  </>
+                )}
               </div>
-              <div>
-                <span style={{ color: 'var(--color-muted)' }}>Pages: </span>
-                <span style={{ color: 'var(--color-text)', fontWeight: '500' }}>
-                  {progress.crawlingJobPagesProcessed}/{Math.max(progress.crawlingJobPagesEnqueued, 0)}
-                </span>
-              </div>
-              <div>
-                <span style={{ color: 'var(--color-muted)' }}>Enqueued: </span>
-                <span style={{ color: 'var(--color-text)', fontWeight: '500' }}>
-                  {progress.crawlingJobPagesEnqueued}
-                </span>
-              </div>
-              {progress.crawlingJobPagesSkipped > 0 && (
-                <div>
-                  <span style={{ color: 'var(--color-muted)' }}>Skipped: </span>
-                  <span style={{ color: 'var(--color-text)', fontWeight: '500' }}>
-                    {progress.crawlingJobPagesSkipped}
-                  </span>
-                </div>
-              )}
-              {progress.crawlingJobCardsFound > 0 && (
-                <div>
-                  <span style={{ color: 'var(--color-muted)' }}>Cards: </span>
-                  <span style={{ color: 'var(--color-text)', fontWeight: '500' }}>
-                    {progress.crawlingJobCardsFound}
-                  </span>
-                </div>
-              )}
             </>
           )}
-          {step !== 'crawling' && (
-            <div>
-              <span style={{ color: 'var(--color-muted)' }}>Discovered: </span>
-              <span style={{ color: 'var(--color-text)', fontWeight: '500' }}>
-                {progress.jobsDiscovered}
-              </span>
+
+          {step === "failed" && progress.error && (
+            <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+              {progress.error}
             </div>
           )}
-          {progress.jobsScored > 0 && (
-            <div>
-              <span style={{ color: 'var(--color-muted)' }}>Scored: </span>
-              <span style={{ color: 'var(--color-text)', fontWeight: '500' }}>
-                {progress.jobsScored}
-              </span>
-            </div>
-          )}
-          {progress.totalToProcess > 0 && (
-            <div>
-              <span style={{ color: 'var(--color-muted)' }}>Processed: </span>
-              <span style={{ color: 'var(--color-text)', fontWeight: '500' }}>
-                {progress.jobsProcessed}/{progress.totalToProcess}
-              </span>
-            </div>
-          )}
-        </div>
+        </CardContent>
       )}
-      
-      {/* Error state */}
-      {step === 'failed' && progress?.error && (
-        <div style={{
-          marginTop: 'var(--space-3)',
-          padding: 'var(--space-3)',
-          background: 'rgba(var(--color-error-rgb), 0.1)',
-          borderRadius: 'var(--radius-md)',
-          color: 'var(--color-error)',
-          fontSize: 'var(--font-sm)',
-        }}>
-          {progress.error}
-        </div>
-      )}
-    </div>
+    </Card>
   );
 };
+
