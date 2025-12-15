@@ -5,7 +5,7 @@
  */
 
 import { spawn } from 'child_process';
-import { readFile, mkdir } from 'fs/promises';
+import { readFile, mkdir, unlink } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { CreateJobInput, JobSource } from '../../shared/types.js';
@@ -110,7 +110,7 @@ function formatSalary(params: {
 
 export interface RunJobSpyOptions {
   sites?: Array<JobSource>;
-  searchTerm?: string;
+  searchTerms?: string[];
   location?: string;
   resultsWanted?: number;
   hoursOld?: number;
@@ -129,108 +129,71 @@ export async function runJobSpy(options: RunJobSpyOptions = {}): Promise<JobSpyR
   const outputDir = join(dataDir, 'imports');
   await mkdir(outputDir, { recursive: true });
 
-  const outputCsv = join(outputDir, 'jobspy_jobs.csv');
-  const outputJson = join(outputDir, 'jobspy_jobs.json');
-
   const sites = (options.sites ?? ['indeed', 'linkedin'])
     .filter((s) => s === 'indeed' || s === 'linkedin')
     .join(',');
 
+  const searchTerms = resolveSearchTerms(options);
+  if (searchTerms.length === 0) {
+    return { success: true, jobs: [] };
+  }
+
   try {
-    await new Promise<void>((resolve, reject) => {
-      const pythonPath = getPythonPath();
-      const child = spawn(pythonPath, [JOBSPY_SCRIPT], {
-        cwd: JOBSPY_DIR,
-        shell: false,
-        stdio: 'inherit',
-        env: {
-          ...process.env,
-          JOBSPY_SITES: sites || 'indeed,linkedin',
-          JOBSPY_SEARCH_TERM: options.searchTerm ?? process.env.JOBSPY_SEARCH_TERM ?? 'web developer',
-          JOBSPY_LOCATION: options.location ?? process.env.JOBSPY_LOCATION ?? 'UK',
-          JOBSPY_RESULTS_WANTED: String(options.resultsWanted ?? process.env.JOBSPY_RESULTS_WANTED ?? 200),
-          JOBSPY_HOURS_OLD: String(options.hoursOld ?? process.env.JOBSPY_HOURS_OLD ?? 72),
-          JOBSPY_COUNTRY_INDEED: options.countryIndeed ?? process.env.JOBSPY_COUNTRY_INDEED ?? 'UK',
-          JOBSPY_LINKEDIN_FETCH_DESCRIPTION: String(
-            options.linkedinFetchDescription ?? process.env.JOBSPY_LINKEDIN_FETCH_DESCRIPTION ?? '1'
-          ),
-          JOBSPY_OUTPUT_CSV: outputCsv,
-          JOBSPY_OUTPUT_JSON: outputJson,
-        },
-      });
-
-      child.on('close', (code) => {
-        if (code === 0) resolve();
-        else reject(new Error(`JobSpy exited with code ${code}`));
-      });
-      child.on('error', reject);
-    });
-
-    const raw = await readFile(outputJson, 'utf-8');
-    const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
-
     const jobs: CreateJobInput[] = [];
+    const seenJobUrls = new Set<string>();
 
-    for (const row of parsed) {
-      const source = toJobSource(row.site);
-      if (!source) continue;
+    for (let i = 0; i < searchTerms.length; i++) {
+      const searchTerm = searchTerms[i];
+      const suffix = `${i + 1}_${slugForFilename(searchTerm)}`;
+      const outputCsv = join(outputDir, `jobspy_jobs_${suffix}.csv`);
+      const outputJson = join(outputDir, `jobspy_jobs_${suffix}.json`);
 
-      const jobUrl = toStringOrNull(row.job_url);
-      if (!jobUrl) continue;
+      await new Promise<void>((resolve, reject) => {
+        const pythonPath = getPythonPath();
+        const child = spawn(pythonPath, [JOBSPY_SCRIPT], {
+          cwd: JOBSPY_DIR,
+          shell: false,
+          stdio: 'inherit',
+          env: {
+            ...process.env,
+            JOBSPY_SITES: sites || 'indeed,linkedin',
+            JOBSPY_SEARCH_TERM: searchTerm,
+            JOBSPY_LOCATION: options.location ?? process.env.JOBSPY_LOCATION ?? 'UK',
+            JOBSPY_RESULTS_WANTED: String(options.resultsWanted ?? process.env.JOBSPY_RESULTS_WANTED ?? 200),
+            JOBSPY_HOURS_OLD: String(options.hoursOld ?? process.env.JOBSPY_HOURS_OLD ?? 72),
+            JOBSPY_COUNTRY_INDEED: options.countryIndeed ?? process.env.JOBSPY_COUNTRY_INDEED ?? 'UK',
+            JOBSPY_LINKEDIN_FETCH_DESCRIPTION: String(
+              options.linkedinFetchDescription ?? process.env.JOBSPY_LINKEDIN_FETCH_DESCRIPTION ?? '1'
+            ),
+            JOBSPY_OUTPUT_CSV: outputCsv,
+            JOBSPY_OUTPUT_JSON: outputJson,
+          },
+        });
 
-      const title = toStringOrNull(row.title) ?? 'Unknown Title';
-      const employer = toStringOrNull(row.company) ?? 'Unknown Employer';
-
-      const jobUrlDirect = toStringOrNull(row.job_url_direct);
-      const applicationLink = jobUrlDirect ?? jobUrl;
-
-      const minAmount = toNumberOrNull(row.min_amount);
-      const maxAmount = toNumberOrNull(row.max_amount);
-      const currency = toStringOrNull(row.currency);
-      const interval = toStringOrNull(row.interval);
-
-      const salary = formatSalary({ minAmount, maxAmount, currency, interval });
-
-      jobs.push({
-        source,
-        sourceJobId: toStringOrNull(row.id) ?? undefined,
-        jobUrlDirect: jobUrlDirect ?? undefined,
-        datePosted: toStringOrNull(row.date_posted) ?? undefined,
-
-        title,
-        employer,
-        employerUrl: toStringOrNull(row.company_url) ?? undefined,
-        jobUrl,
-        applicationLink,
-        location: toStringOrNull(row.location) ?? undefined,
-        jobDescription: toStringOrNull(row.description) ?? undefined,
-        salary: salary ?? undefined,
-
-        jobType: toStringOrNull(row.job_type) ?? undefined,
-        salarySource: toStringOrNull(row.salary_source) ?? undefined,
-        salaryInterval: interval ?? undefined,
-        salaryMinAmount: minAmount ?? undefined,
-        salaryMaxAmount: maxAmount ?? undefined,
-        salaryCurrency: currency ?? undefined,
-        isRemote: toBooleanOrNull(row.is_remote) ?? undefined,
-        jobLevel: toStringOrNull(row.job_level) ?? undefined,
-        jobFunction: toStringOrNull(row.job_function) ?? undefined,
-        listingType: toStringOrNull(row.listing_type) ?? undefined,
-        emails: toJsonStringOrNull(row.emails) ?? undefined,
-        companyIndustry: toStringOrNull(row.company_industry) ?? undefined,
-        companyLogo: toStringOrNull(row.company_logo) ?? undefined,
-        companyUrlDirect: toStringOrNull(row.company_url_direct) ?? undefined,
-        companyAddresses: toJsonStringOrNull(row.company_addresses) ?? undefined,
-        companyNumEmployees: toStringOrNull(row.company_num_employees) ?? undefined,
-        companyRevenue: toStringOrNull(row.company_revenue) ?? undefined,
-        companyDescription: toStringOrNull(row.company_description) ?? undefined,
-        skills: toJsonStringOrNull(row.skills) ?? undefined,
-        experienceRange: toJsonStringOrNull(row.experience_range) ?? undefined,
-        companyRating: toNumberOrNull(row.company_rating) ?? undefined,
-        companyReviewsCount: toNumberOrNull(row.company_reviews_count) ?? undefined,
-        vacancyCount: toNumberOrNull(row.vacancy_count) ?? undefined,
-        workFromHomeType: toStringOrNull(row.work_from_home_type) ?? undefined,
+        child.on('close', (code) => {
+          if (code === 0) resolve();
+          else reject(new Error(`JobSpy exited with code ${code}`));
+        });
+        child.on('error', reject);
       });
+
+      const raw = await readFile(outputJson, 'utf-8');
+      const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
+      const mapped = mapJobSpyRows(parsed);
+
+      for (const job of mapped) {
+        const url = job.jobUrl;
+        if (seenJobUrls.has(url)) continue;
+        seenJobUrls.add(url);
+        jobs.push(job);
+      }
+
+      try {
+        await unlink(outputJson);
+        await unlink(outputCsv);
+      } catch {
+        // Ignore cleanup errors
+      }
     }
 
     return { success: true, jobs };
@@ -238,4 +201,121 @@ export async function runJobSpy(options: RunJobSpyOptions = {}): Promise<JobSpyR
     const message = error instanceof Error ? error.message : 'Unknown error';
     return { success: false, jobs: [], error: message };
   }
+}
+
+function resolveSearchTerms(options: RunJobSpyOptions): string[] {
+  const fromOptions = options.searchTerms?.length ? options.searchTerms : null;
+  const fromEnv = parseSearchTermsEnv(process.env.JOBSPY_SEARCH_TERMS);
+  const raw = fromOptions ?? fromEnv ?? ['web developer'];
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  for (const term of raw) {
+    const normalized = term.trim();
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+  }
+
+  return out;
+}
+
+function parseSearchTermsEnv(raw: string | undefined): string[] | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')) {
+        return parsed;
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  const delimiter = trimmed.includes('|') ? '|' : trimmed.includes('\n') ? '\n' : ',';
+  const split = trimmed.split(delimiter).map((t) => t.trim()).filter(Boolean);
+  return split.length > 0 ? split : null;
+}
+
+function slugForFilename(input: string): string {
+  const slug = input
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40);
+  return slug || 'term';
+}
+
+function mapJobSpyRows(parsed: Array<Record<string, unknown>>): CreateJobInput[] {
+  const jobs: CreateJobInput[] = [];
+
+  for (const row of parsed) {
+    const source = toJobSource(row.site);
+    if (!source) continue;
+
+    const jobUrl = toStringOrNull(row.job_url);
+    if (!jobUrl) continue;
+
+    const title = toStringOrNull(row.title) ?? 'Unknown Title';
+    const employer = toStringOrNull(row.company) ?? 'Unknown Employer';
+
+    const jobUrlDirect = toStringOrNull(row.job_url_direct);
+    const applicationLink = jobUrlDirect ?? jobUrl;
+
+    const minAmount = toNumberOrNull(row.min_amount);
+    const maxAmount = toNumberOrNull(row.max_amount);
+    const currency = toStringOrNull(row.currency);
+    const interval = toStringOrNull(row.interval);
+
+    const salary = formatSalary({ minAmount, maxAmount, currency, interval });
+
+    jobs.push({
+      source,
+      sourceJobId: toStringOrNull(row.id) ?? undefined,
+      jobUrlDirect: jobUrlDirect ?? undefined,
+      datePosted: toStringOrNull(row.date_posted) ?? undefined,
+
+      title,
+      employer,
+      employerUrl: toStringOrNull(row.company_url) ?? undefined,
+      jobUrl,
+      applicationLink,
+      location: toStringOrNull(row.location) ?? undefined,
+      jobDescription: toStringOrNull(row.description) ?? undefined,
+      salary: salary ?? undefined,
+
+      jobType: toStringOrNull(row.job_type) ?? undefined,
+      salarySource: toStringOrNull(row.salary_source) ?? undefined,
+      salaryInterval: interval ?? undefined,
+      salaryMinAmount: minAmount ?? undefined,
+      salaryMaxAmount: maxAmount ?? undefined,
+      salaryCurrency: currency ?? undefined,
+      isRemote: toBooleanOrNull(row.is_remote) ?? undefined,
+      jobLevel: toStringOrNull(row.job_level) ?? undefined,
+      jobFunction: toStringOrNull(row.job_function) ?? undefined,
+      listingType: toStringOrNull(row.listing_type) ?? undefined,
+      emails: toJsonStringOrNull(row.emails) ?? undefined,
+      companyIndustry: toStringOrNull(row.company_industry) ?? undefined,
+      companyLogo: toStringOrNull(row.company_logo) ?? undefined,
+      companyUrlDirect: toStringOrNull(row.company_url_direct) ?? undefined,
+      companyAddresses: toJsonStringOrNull(row.company_addresses) ?? undefined,
+      companyNumEmployees: toStringOrNull(row.company_num_employees) ?? undefined,
+      companyRevenue: toStringOrNull(row.company_revenue) ?? undefined,
+      companyDescription: toStringOrNull(row.company_description) ?? undefined,
+      skills: toJsonStringOrNull(row.skills) ?? undefined,
+      experienceRange: toJsonStringOrNull(row.experience_range) ?? undefined,
+      companyRating: toNumberOrNull(row.company_rating) ?? undefined,
+      companyReviewsCount: toNumberOrNull(row.company_reviews_count) ?? undefined,
+      vacancyCount: toNumberOrNull(row.vacancy_count) ?? undefined,
+      workFromHomeType: toStringOrNull(row.work_from_home_type) ?? undefined,
+    });
+  }
+
+  return jobs;
 }
