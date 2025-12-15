@@ -68,7 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4">
-        <div className="flex items-center gap-3">
+        <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
             <Rocket className="h-5 w-5" />
           </div>
@@ -76,7 +76,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="text-sm font-semibold tracking-tight">Job Ops</div>
             <div className="text-xs text-muted-foreground">Orchestrator</div>
           </div>
-        </div>
+        </Link>
 
         <div className="flex flex-wrap items-center gap-2">
           <AlertDialog>
