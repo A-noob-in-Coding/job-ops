@@ -11,6 +11,7 @@ export type SettingKey = 'model'
   | 'pipelineWebhookUrl'
   | 'jobCompleteWebhookUrl'
   | 'resumeProjects'
+  | 'ukvisajobsMaxJobs'
 
 export async function getSetting(key: SettingKey): Promise<string | null> {
   const [row] = await db.select().from(settings).where(eq(settings.key, key))

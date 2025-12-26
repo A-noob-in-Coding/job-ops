@@ -9,7 +9,7 @@
  *   UKVISAJOBS_AUTH_TOKEN - Auth cookie token (defaults to UKVISAJOBS_TOKEN)
  *   UKVISAJOBS_CSRF_TOKEN - CSRF token cookie
  *   UKVISAJOBS_CI_SESSION - CI session cookie
- *   UKVISAJOBS_MAX_JOBS - Maximum jobs to fetch (default: 50, max: 200)
+ *   UKVISAJOBS_MAX_JOBS - Maximum jobs to fetch (default: 50, max: 200) - Set via UI Settings
  *   UKVISAJOBS_SEARCH_KEYWORD - Optional search filter
  */
 

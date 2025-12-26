@@ -201,4 +201,7 @@ export interface AppSettings {
   resumeProjects: ResumeProjectsSettings;
   defaultResumeProjects: ResumeProjectsSettings;
   overrideResumeProjects: ResumeProjectsSettings | null;
+  ukvisajobsMaxJobs: number;
+  defaultUkvisajobsMaxJobs: number;
+  overrideUkvisajobsMaxJobs: number | null;
 }

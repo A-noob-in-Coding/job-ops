@@ -42,6 +42,7 @@ export const SettingsPage: React.FC = () => {
   const [pipelineWebhookUrlDraft, setPipelineWebhookUrlDraft] = useState("")
   const [jobCompleteWebhookUrlDraft, setJobCompleteWebhookUrlDraft] = useState("")
   const [resumeProjectsDraft, setResumeProjectsDraft] = useState<ResumeProjectsSettings | null>(null)
+  const [ukvisajobsMaxJobsDraft, setUkvisajobsMaxJobsDraft] = useState<number | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -57,6 +58,7 @@ export const SettingsPage: React.FC = () => {
         setPipelineWebhookUrlDraft(data.overridePipelineWebhookUrl ?? "")
         setJobCompleteWebhookUrlDraft(data.overrideJobCompleteWebhookUrl ?? "")
         setResumeProjectsDraft(data.resumeProjects)
+        setUkvisajobsMaxJobsDraft(data.overrideUkvisajobsMaxJobs)
       })
       .catch((error) => {
         const message = error instanceof Error ? error.message : "Failed to load settings"
@@ -81,6 +83,9 @@ export const SettingsPage: React.FC = () => {
   const effectiveJobCompleteWebhookUrl = settings?.jobCompleteWebhookUrl ?? ""
   const defaultJobCompleteWebhookUrl = settings?.defaultJobCompleteWebhookUrl ?? ""
   const overrideJobCompleteWebhookUrl = settings?.overrideJobCompleteWebhookUrl
+  const effectiveUkvisajobsMaxJobs = settings?.ukvisajobsMaxJobs ?? 50
+  const defaultUkvisajobsMaxJobs = settings?.defaultUkvisajobsMaxJobs ?? 50
+  const overrideUkvisajobsMaxJobs = settings?.overrideUkvisajobsMaxJobs
   const profileProjects = settings?.profileProjects ?? []
   const maxProjectsTotal = profileProjects.length
   const lockedCount = resumeProjectsDraft?.lockedProjectIds.length ?? 0
@@ -93,11 +98,13 @@ export const SettingsPage: React.FC = () => {
     const currentWebhook = (overridePipelineWebhookUrl ?? "").trim()
     const nextJobCompleteWebhook = jobCompleteWebhookUrlDraft.trim()
     const currentJobCompleteWebhook = (overrideJobCompleteWebhookUrl ?? "").trim()
+    const ukvisajobsChanged = ukvisajobsMaxJobsDraft !== (overrideUkvisajobsMaxJobs ?? null)
     return (
       next !== current ||
       nextWebhook !== currentWebhook ||
       nextJobCompleteWebhook !== currentJobCompleteWebhook ||
-      !resumeProjectsEqual(resumeProjectsDraft, settings.resumeProjects)
+      !resumeProjectsEqual(resumeProjectsDraft, settings.resumeProjects) ||
+      ukvisajobsChanged
     )
   }, [
     settings,
@@ -108,6 +115,8 @@ export const SettingsPage: React.FC = () => {
     overridePipelineWebhookUrl,
     overrideJobCompleteWebhookUrl,
     resumeProjectsDraft,
+    ukvisajobsMaxJobsDraft,
+    overrideUkvisajobsMaxJobs,
   ])
 
   const handleSave = async () => {
@@ -120,17 +129,20 @@ export const SettingsPage: React.FC = () => {
       const resumeProjectsOverride = resumeProjectsEqual(resumeProjectsDraft, settings.defaultResumeProjects)
         ? null
         : resumeProjectsDraft
+      const ukvisajobsMaxJobsOverride = ukvisajobsMaxJobsDraft === defaultUkvisajobsMaxJobs ? null : ukvisajobsMaxJobsDraft
       const updated = await api.updateSettings({
         model: trimmed.length > 0 ? trimmed : null,
         pipelineWebhookUrl: webhookTrimmed.length > 0 ? webhookTrimmed : null,
         jobCompleteWebhookUrl: jobCompleteTrimmed.length > 0 ? jobCompleteTrimmed : null,
         resumeProjects: resumeProjectsOverride,
+        ukvisajobsMaxJobs: ukvisajobsMaxJobsOverride,
       })
       setSettings(updated)
       setModelDraft(updated.overrideModel ?? "")
       setPipelineWebhookUrlDraft(updated.overridePipelineWebhookUrl ?? "")
       setJobCompleteWebhookUrlDraft(updated.overrideJobCompleteWebhookUrl ?? "")
       setResumeProjectsDraft(updated.resumeProjects)
+      setUkvisajobsMaxJobsDraft(updated.overrideUkvisajobsMaxJobs)
       toast.success("Settings saved")
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to save settings"
@@ -148,12 +160,14 @@ export const SettingsPage: React.FC = () => {
         pipelineWebhookUrl: null,
         jobCompleteWebhookUrl: null,
         resumeProjects: null,
+        ukvisajobsMaxJobs: null,
       })
       setSettings(updated)
       setModelDraft("")
       setPipelineWebhookUrlDraft("")
       setJobCompleteWebhookUrlDraft("")
       setResumeProjectsDraft(updated.resumeProjects)
+      setUkvisajobsMaxJobsDraft(null)
       toast.success("Reset to default")
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to reset settings"
@@ -267,6 +281,50 @@ export const SettingsPage: React.FC = () => {
             <div>
               <div className="text-xs text-muted-foreground">Default (env)</div>
               <div className="break-words font-mono text-xs">{defaultJobCompleteWebhookUrl || "—"}</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">UKVisaJobs Extractor</CardTitle>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <div className="text-sm font-medium">Max jobs to fetch</div>
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={200}
+              value={ukvisajobsMaxJobsDraft ?? defaultUkvisajobsMaxJobs}
+              onChange={(event) => {
+                const value = parseInt(event.target.value, 10)
+                if (Number.isNaN(value)) {
+                  setUkvisajobsMaxJobsDraft(null)
+                } else {
+                  setUkvisajobsMaxJobsDraft(Math.min(200, Math.max(1, value)))
+                }
+              }}
+              disabled={isLoading || isSaving}
+            />
+            <div className="text-xs text-muted-foreground">
+              Maximum number of jobs to fetch from UKVisaJobs per pipeline run. Range: 1-200.
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="grid gap-2 text-sm sm:grid-cols-2">
+            <div>
+              <div className="text-xs text-muted-foreground">Effective</div>
+              <div className="break-words font-mono text-xs">{effectiveUkvisajobsMaxJobs}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Default</div>
+              <div className="break-words font-mono text-xs">{defaultUkvisajobsMaxJobs}</div>
             </div>
           </div>
         </CardContent>

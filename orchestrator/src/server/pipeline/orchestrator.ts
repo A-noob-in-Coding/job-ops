@@ -162,7 +162,11 @@ export async function runPipeline(config: Partial<PipelineConfig> = {}): Promise
         detail: 'UKVisaJobs: scraping visa-sponsoring jobs...',
       });
 
-      const ukVisaResult = await runUkVisaJobs({ maxJobs: 50 });
+      // Read max jobs setting from database (default to 50 if not set)
+      const ukvisajobsMaxJobsSetting = await settingsRepo.getSetting('ukvisajobsMaxJobs');
+      const ukvisajobsMaxJobs = ukvisajobsMaxJobsSetting ? parseInt(ukvisajobsMaxJobsSetting, 10) : 50;
+
+      const ukVisaResult = await runUkVisaJobs({ maxJobs: ukvisajobsMaxJobs });
       if (!ukVisaResult.success) {
         sourceErrors.push(`ukvisajobs: ${ukVisaResult.error ?? 'unknown error'}`);
       } else {

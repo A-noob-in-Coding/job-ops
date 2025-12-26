@@ -238,6 +238,11 @@ apiRouter.get('/settings', async (_req: Request, res: Response) => {
     const overrideResumeProjectsRaw = await settingsRepo.getSetting('resumeProjects');
     const resumeProjectsData = resolveResumeProjectsSettings({ catalog, overrideRaw: overrideResumeProjectsRaw });
 
+    const overrideUkvisajobsMaxJobsRaw = await settingsRepo.getSetting('ukvisajobsMaxJobs');
+    const defaultUkvisajobsMaxJobs = 50;
+    const overrideUkvisajobsMaxJobs = overrideUkvisajobsMaxJobsRaw ? parseInt(overrideUkvisajobsMaxJobsRaw, 10) : null;
+    const ukvisajobsMaxJobs = overrideUkvisajobsMaxJobs ?? defaultUkvisajobsMaxJobs;
+
     res.json({
       success: true,
       data: {
@@ -251,6 +256,9 @@ apiRouter.get('/settings', async (_req: Request, res: Response) => {
         defaultJobCompleteWebhookUrl,
         overrideJobCompleteWebhookUrl,
         ...resumeProjectsData,
+        ukvisajobsMaxJobs,
+        defaultUkvisajobsMaxJobs,
+        overrideUkvisajobsMaxJobs,
       },
     });
   } catch (error) {
@@ -268,6 +276,7 @@ const updateSettingsSchema = z.object({
     lockedProjectIds: z.array(z.string().trim().min(1)).max(200),
     aiSelectableProjectIds: z.array(z.string().trim().min(1)).max(200),
   }).nullable().optional(),
+  ukvisajobsMaxJobs: z.number().int().min(1).max(200).nullable().optional(),
 });
 
 /**
@@ -306,6 +315,11 @@ apiRouter.patch('/settings', async (req: Request, res: Response) => {
       }
     }
 
+    if ('ukvisajobsMaxJobs' in input) {
+      const ukvisajobsMaxJobs = input.ukvisajobsMaxJobs ?? null;
+      await settingsRepo.setSetting('ukvisajobsMaxJobs', ukvisajobsMaxJobs !== null ? String(ukvisajobsMaxJobs) : null);
+    }
+
     const overrideModel = await settingsRepo.getSetting('model');
     const defaultModel = process.env.MODEL || 'openai/gpt-4o-mini';
     const model = overrideModel || defaultModel;
@@ -323,6 +337,11 @@ apiRouter.patch('/settings', async (req: Request, res: Response) => {
     const overrideResumeProjectsRaw = await settingsRepo.getSetting('resumeProjects');
     const resumeProjectsData = resolveResumeProjectsSettings({ catalog, overrideRaw: overrideResumeProjectsRaw });
 
+    const overrideUkvisajobsMaxJobsRaw = await settingsRepo.getSetting('ukvisajobsMaxJobs');
+    const defaultUkvisajobsMaxJobs = 50;
+    const overrideUkvisajobsMaxJobs = overrideUkvisajobsMaxJobsRaw ? parseInt(overrideUkvisajobsMaxJobsRaw, 10) : null;
+    const ukvisajobsMaxJobs = overrideUkvisajobsMaxJobs ?? defaultUkvisajobsMaxJobs;
+
     res.json({
       success: true,
       data: {
@@ -336,6 +355,9 @@ apiRouter.patch('/settings', async (req: Request, res: Response) => {
         defaultJobCompleteWebhookUrl,
         overrideJobCompleteWebhookUrl,
         ...resumeProjectsData,
+        ukvisajobsMaxJobs,
+        defaultUkvisajobsMaxJobs,
+        overrideUkvisajobsMaxJobs,
       },
     });
   } catch (error) {
