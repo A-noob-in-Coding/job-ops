@@ -67,6 +67,27 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    develop:
+      watch:
+        # Rebuild container when package.json changes
+        - path: ./orchestrator/package.json
+          action: rebuild
+        - path: ./orchestrator/package-lock.json
+          action: rebuild
+        # Sync source code changes and rebuild inside container
+        - path: ./orchestrator/src
+          target: /app/orchestrator/src
+          action: sync+restart
+        # Sync extractor changes
+        - path: ./extractors/gradcracker/src
+          target: /app/extractors/gradcracker/src
+          action: sync+restart
+        - path: ./extractors/ukvisajobs/src
+          target: /app/extractors/ukvisajobs/src
+          action: sync+restart
+        - path: ./extractors/jobspy
+          target: /app/extractors/jobspy
+          action: sync+restart
 
 # Volumes for data persistence
 volumes:
