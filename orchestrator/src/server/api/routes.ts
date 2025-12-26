@@ -243,6 +243,13 @@ apiRouter.get('/settings', async (_req: Request, res: Response) => {
     const overrideUkvisajobsMaxJobs = overrideUkvisajobsMaxJobsRaw ? parseInt(overrideUkvisajobsMaxJobsRaw, 10) : null;
     const ukvisajobsMaxJobs = overrideUkvisajobsMaxJobs ?? defaultUkvisajobsMaxJobs;
 
+    // Search terms - stored as JSON array, default from env var (pipe-separated)
+    const overrideSearchTermsRaw = await settingsRepo.getSetting('searchTerms');
+    const defaultSearchTermsEnv = process.env.JOBSPY_SEARCH_TERMS || 'web developer';
+    const defaultSearchTerms = defaultSearchTermsEnv.split('|').map(s => s.trim()).filter(Boolean);
+    const overrideSearchTerms = overrideSearchTermsRaw ? JSON.parse(overrideSearchTermsRaw) as string[] : null;
+    const searchTerms = overrideSearchTerms ?? defaultSearchTerms;
+
     res.json({
       success: true,
       data: {
@@ -259,6 +266,9 @@ apiRouter.get('/settings', async (_req: Request, res: Response) => {
         ukvisajobsMaxJobs,
         defaultUkvisajobsMaxJobs,
         overrideUkvisajobsMaxJobs,
+        searchTerms,
+        defaultSearchTerms,
+        overrideSearchTerms,
       },
     });
   } catch (error) {
@@ -277,6 +287,7 @@ const updateSettingsSchema = z.object({
     aiSelectableProjectIds: z.array(z.string().trim().min(1)).max(200),
   }).nullable().optional(),
   ukvisajobsMaxJobs: z.number().int().min(1).max(200).nullable().optional(),
+  searchTerms: z.array(z.string().trim().min(1).max(200)).max(50).nullable().optional(),
 });
 
 /**
@@ -320,6 +331,11 @@ apiRouter.patch('/settings', async (req: Request, res: Response) => {
       await settingsRepo.setSetting('ukvisajobsMaxJobs', ukvisajobsMaxJobs !== null ? String(ukvisajobsMaxJobs) : null);
     }
 
+    if ('searchTerms' in input) {
+      const searchTerms = input.searchTerms ?? null;
+      await settingsRepo.setSetting('searchTerms', searchTerms !== null ? JSON.stringify(searchTerms) : null);
+    }
+
     const overrideModel = await settingsRepo.getSetting('model');
     const defaultModel = process.env.MODEL || 'openai/gpt-4o-mini';
     const model = overrideModel || defaultModel;
@@ -342,6 +358,13 @@ apiRouter.patch('/settings', async (req: Request, res: Response) => {
     const overrideUkvisajobsMaxJobs = overrideUkvisajobsMaxJobsRaw ? parseInt(overrideUkvisajobsMaxJobsRaw, 10) : null;
     const ukvisajobsMaxJobs = overrideUkvisajobsMaxJobs ?? defaultUkvisajobsMaxJobs;
 
+    // Search terms - stored as JSON array, default from env var (pipe-separated)
+    const overrideSearchTermsRaw = await settingsRepo.getSetting('searchTerms');
+    const defaultSearchTermsEnv = process.env.JOBSPY_SEARCH_TERMS || 'web developer';
+    const defaultSearchTerms = defaultSearchTermsEnv.split('|').map(s => s.trim()).filter(Boolean);
+    const overrideSearchTerms = overrideSearchTermsRaw ? JSON.parse(overrideSearchTermsRaw) as string[] : null;
+    const searchTerms = overrideSearchTerms ?? defaultSearchTerms;
+
     res.json({
       success: true,
       data: {
@@ -358,6 +381,9 @@ apiRouter.patch('/settings', async (req: Request, res: Response) => {
         ukvisajobsMaxJobs,
         defaultUkvisajobsMaxJobs,
         overrideUkvisajobsMaxJobs,
+        searchTerms,
+        defaultSearchTerms,
+        overrideSearchTerms,
       },
     });
   } catch (error) {

@@ -108,35 +108,22 @@ export async function runPipeline(config: Partial<PipelineConfig> = {}): Promise
     // Step 2: Run crawler
     console.log('\n🕷️ Running crawler...');
     progressHelpers.startCrawling();
-    const existingJobUrls = await jobsRepo.getAllJobUrls();
-
     const discoveredJobs: CreateJobInput[] = [];
     const sourceErrors: string[] = [];
 
-    if (mergedConfig.sources.includes('gradcracker')) {
-      const crawlerResult = await runCrawler({
-        existingJobUrls,
-        onProgress: (update) => {
-          progressHelpers.crawlingUpdate({
-            listPagesProcessed: update.listPagesProcessed,
-            listPagesTotal: update.listPagesTotal,
-            jobCardsFound: update.jobCardsFound,
-            jobPagesEnqueued: update.jobPagesEnqueued,
-            jobPagesSkipped: update.jobPagesSkipped,
-            jobPagesProcessed: update.jobPagesProcessed,
-            phase: update.phase,
-            currentUrl: update.currentUrl,
-          });
-        },
-      });
+    // Read search terms setting
+    const searchTermsSetting = await settingsRepo.getSetting('searchTerms');
+    let searchTerms: string[] = [];
 
-      if (!crawlerResult.success) {
-        sourceErrors.push(`gradcracker: ${crawlerResult.error ?? 'unknown error'}`);
-      } else {
-        discoveredJobs.push(...crawlerResult.jobs);
-      }
+    if (searchTermsSetting) {
+      searchTerms = JSON.parse(searchTermsSetting) as string[];
+    } else {
+      // Default from env var
+      const defaultSearchTermsEnv = process.env.JOBSPY_SEARCH_TERMS || 'web developer';
+      searchTerms = defaultSearchTermsEnv.split('|').map(s => s.trim()).filter(Boolean);
     }
 
+    // Run JobSpy (Indeed/LinkedIn) if selected
     const jobSpySites = mergedConfig.sources.filter(
       (s): s is 'indeed' | 'linkedin' => s === 'indeed' || s === 'linkedin'
     );
@@ -147,11 +134,47 @@ export async function runPipeline(config: Partial<PipelineConfig> = {}): Promise
         detail: `JobSpy: scraping ${jobSpySites.join(', ')}...`,
       });
 
-      const jobSpyResult = await runJobSpy({ sites: jobSpySites });
+      const jobSpyResult = await runJobSpy({
+        sites: jobSpySites,
+        searchTerms,
+      });
       if (!jobSpyResult.success) {
         sourceErrors.push(`jobspy: ${jobSpyResult.error ?? 'unknown error'}`);
       } else {
         discoveredJobs.push(...jobSpyResult.jobs);
+      }
+    }
+
+    // Run Gradcracker crawler if selected
+    if (mergedConfig.sources.includes('gradcracker')) {
+      updateProgress({
+        step: 'crawling',
+        detail: 'Gradcracker: scraping...',
+      });
+
+      // Pass existing URLs to avoid clicking "Apply" on jobs we already have
+      const existingJobUrls = await jobsRepo.getAllJobUrls();
+
+      const crawlerResult = await runCrawler({
+        existingJobUrls,
+        searchTerms,
+        onProgress: (progress) => {
+          // Calculate overall progress based on list pages processed vs total
+          // This is rough but better than nothing
+          if (progress.listPagesTotal && progress.listPagesTotal > 0) {
+            const percent = Math.round((progress.listPagesProcessed ?? 0) / progress.listPagesTotal * 100);
+            updateProgress({
+              step: 'crawling',
+              detail: `Gradcracker: ${percent}% (scan ${progress.listPagesProcessed}/${progress.listPagesTotal}, found ${progress.jobCardsFound})`,
+            });
+          }
+        },
+      });
+
+      if (!crawlerResult.success) {
+        sourceErrors.push(`gradcracker: ${crawlerResult.error ?? 'unknown error'}`);
+      } else {
+        discoveredJobs.push(...crawlerResult.jobs);
       }
     }
 
@@ -166,7 +189,10 @@ export async function runPipeline(config: Partial<PipelineConfig> = {}): Promise
       const ukvisajobsMaxJobsSetting = await settingsRepo.getSetting('ukvisajobsMaxJobs');
       const ukvisajobsMaxJobs = ukvisajobsMaxJobsSetting ? parseInt(ukvisajobsMaxJobsSetting, 10) : 50;
 
-      const ukVisaResult = await runUkVisaJobs({ maxJobs: ukvisajobsMaxJobs });
+      const ukVisaResult = await runUkVisaJobs({
+        maxJobs: ukvisajobsMaxJobs,
+        searchTerms,
+      });
       if (!ukVisaResult.success) {
         sourceErrors.push(`ukvisajobs: ${ukVisaResult.error ?? 'unknown error'}`);
       } else {

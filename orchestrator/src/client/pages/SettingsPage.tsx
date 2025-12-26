@@ -43,6 +43,7 @@ export const SettingsPage: React.FC = () => {
   const [jobCompleteWebhookUrlDraft, setJobCompleteWebhookUrlDraft] = useState("")
   const [resumeProjectsDraft, setResumeProjectsDraft] = useState<ResumeProjectsSettings | null>(null)
   const [ukvisajobsMaxJobsDraft, setUkvisajobsMaxJobsDraft] = useState<number | null>(null)
+  const [searchTermsDraft, setSearchTermsDraft] = useState<string[] | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -59,6 +60,7 @@ export const SettingsPage: React.FC = () => {
         setJobCompleteWebhookUrlDraft(data.overrideJobCompleteWebhookUrl ?? "")
         setResumeProjectsDraft(data.resumeProjects)
         setUkvisajobsMaxJobsDraft(data.overrideUkvisajobsMaxJobs)
+        setSearchTermsDraft(data.overrideSearchTerms)
       })
       .catch((error) => {
         const message = error instanceof Error ? error.message : "Failed to load settings"
@@ -86,6 +88,9 @@ export const SettingsPage: React.FC = () => {
   const effectiveUkvisajobsMaxJobs = settings?.ukvisajobsMaxJobs ?? 50
   const defaultUkvisajobsMaxJobs = settings?.defaultUkvisajobsMaxJobs ?? 50
   const overrideUkvisajobsMaxJobs = settings?.overrideUkvisajobsMaxJobs
+  const effectiveSearchTerms = settings?.searchTerms ?? []
+  const defaultSearchTerms = settings?.defaultSearchTerms ?? []
+  const overrideSearchTerms = settings?.overrideSearchTerms
   const profileProjects = settings?.profileProjects ?? []
   const maxProjectsTotal = profileProjects.length
   const lockedCount = resumeProjectsDraft?.lockedProjectIds.length ?? 0
@@ -99,12 +104,14 @@ export const SettingsPage: React.FC = () => {
     const nextJobCompleteWebhook = jobCompleteWebhookUrlDraft.trim()
     const currentJobCompleteWebhook = (overrideJobCompleteWebhookUrl ?? "").trim()
     const ukvisajobsChanged = ukvisajobsMaxJobsDraft !== (overrideUkvisajobsMaxJobs ?? null)
+    const searchTermsChanged = JSON.stringify(searchTermsDraft) !== JSON.stringify(overrideSearchTerms ?? null)
     return (
       next !== current ||
       nextWebhook !== currentWebhook ||
       nextJobCompleteWebhook !== currentJobCompleteWebhook ||
       !resumeProjectsEqual(resumeProjectsDraft, settings.resumeProjects) ||
-      ukvisajobsChanged
+      ukvisajobsChanged ||
+      searchTermsChanged
     )
   }, [
     settings,
@@ -117,6 +124,8 @@ export const SettingsPage: React.FC = () => {
     resumeProjectsDraft,
     ukvisajobsMaxJobsDraft,
     overrideUkvisajobsMaxJobs,
+    searchTermsDraft,
+    overrideSearchTerms,
   ])
 
   const handleSave = async () => {
@@ -130,12 +139,14 @@ export const SettingsPage: React.FC = () => {
         ? null
         : resumeProjectsDraft
       const ukvisajobsMaxJobsOverride = ukvisajobsMaxJobsDraft === defaultUkvisajobsMaxJobs ? null : ukvisajobsMaxJobsDraft
+      const searchTermsOverride = arraysEqual(searchTermsDraft ?? [], defaultSearchTerms) ? null : searchTermsDraft
       const updated = await api.updateSettings({
         model: trimmed.length > 0 ? trimmed : null,
         pipelineWebhookUrl: webhookTrimmed.length > 0 ? webhookTrimmed : null,
         jobCompleteWebhookUrl: jobCompleteTrimmed.length > 0 ? jobCompleteTrimmed : null,
         resumeProjects: resumeProjectsOverride,
         ukvisajobsMaxJobs: ukvisajobsMaxJobsOverride,
+        searchTerms: searchTermsOverride,
       })
       setSettings(updated)
       setModelDraft(updated.overrideModel ?? "")
@@ -143,6 +154,7 @@ export const SettingsPage: React.FC = () => {
       setJobCompleteWebhookUrlDraft(updated.overrideJobCompleteWebhookUrl ?? "")
       setResumeProjectsDraft(updated.resumeProjects)
       setUkvisajobsMaxJobsDraft(updated.overrideUkvisajobsMaxJobs)
+      setSearchTermsDraft(updated.overrideSearchTerms)
       toast.success("Settings saved")
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to save settings"
@@ -161,6 +173,7 @@ export const SettingsPage: React.FC = () => {
         jobCompleteWebhookUrl: null,
         resumeProjects: null,
         ukvisajobsMaxJobs: null,
+        searchTerms: null,
       })
       setSettings(updated)
       setModelDraft("")
@@ -168,6 +181,7 @@ export const SettingsPage: React.FC = () => {
       setJobCompleteWebhookUrlDraft("")
       setResumeProjectsDraft(updated.resumeProjects)
       setUkvisajobsMaxJobsDraft(null)
+      setSearchTermsDraft(null)
       toast.success("Reset to default")
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to reset settings"
@@ -325,6 +339,52 @@ export const SettingsPage: React.FC = () => {
             <div>
               <div className="text-xs text-muted-foreground">Default</div>
               <div className="break-words font-mono text-xs">{defaultUkvisajobsMaxJobs}</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Search Terms</CardTitle>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <div className="text-sm font-medium">Global search terms</div>
+            <textarea
+              className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              value={searchTermsDraft ? searchTermsDraft.join('\n') : (defaultSearchTerms ?? []).join('\n')}
+              onChange={(event) => {
+                const text = event.target.value
+                const terms = text.split('\n') // Don't filter here to allow empty lines while typing
+                setSearchTermsDraft(terms)
+              }}
+              onBlur={() => {
+                // Clean up on blur
+                if (searchTermsDraft) {
+                  setSearchTermsDraft(searchTermsDraft.map(t => t.trim()).filter(Boolean))
+                }
+              }}
+              placeholder="e.g. web developer"
+              disabled={isLoading || isSaving}
+              rows={5}
+            />
+            <div className="text-xs text-muted-foreground">
+              One term per line. Applies to UKVisaJobs and other supported extractors.
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="grid gap-2 text-sm sm:grid-cols-2">
+            <div>
+              <div className="text-xs text-muted-foreground">Effective</div>
+              <div className="break-words font-mono text-xs">{(effectiveSearchTerms || []).join(', ') || "—"}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Default (env)</div>
+              <div className="break-words font-mono text-xs">{(defaultSearchTerms || []).join(', ') || "—"}</div>
             </div>
           </div>
         </CardContent>

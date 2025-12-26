@@ -106,6 +106,7 @@ export async function updateSettings(update: {
   jobCompleteWebhookUrl?: string | null
   resumeProjects?: ResumeProjectsSettings | null
   ukvisajobsMaxJobs?: number | null
+  searchTerms?: string[] | null
 }): Promise<AppSettings> {
   return fetchApi<AppSettings>('/settings', {
     method: 'PATCH',

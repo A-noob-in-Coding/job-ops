@@ -204,4 +204,7 @@ export interface AppSettings {
   ukvisajobsMaxJobs: number;
   defaultUkvisajobsMaxJobs: number;
   overrideUkvisajobsMaxJobs: number | null;
+  searchTerms: string[];
+  defaultSearchTerms: string[];
+  overrideSearchTerms: string[] | null;
 }

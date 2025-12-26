@@ -15,10 +15,12 @@ const UKVISAJOBS_DIR = join(__dirname, '../../../../extractors/ukvisajobs');
 const STORAGE_DIR = join(UKVISAJOBS_DIR, 'storage/datasets/default');
 
 export interface RunUkVisaJobsOptions {
-    /** Maximum number of jobs to fetch. Defaults to 50, max 200. */
+    /** Maximum number of jobs to fetch per search term. Defaults to 50, max 200. */
     maxJobs?: number;
-    /** Search keyword filter (optional) */
+    /** Search keyword filter (single) - legacy support */
     searchKeyword?: string;
+    /** List of search terms to run sequentially */
+    searchTerms?: string[];
 }
 
 export interface UkVisaJobsResult {
@@ -38,46 +40,76 @@ async function clearStorageDataset(): Promise<void> {
     }
 }
 
-/**
- * Run the UK Visa Jobs extractor.
- */
 export async function runUkVisaJobs(options: RunUkVisaJobsOptions = {}): Promise<UkVisaJobsResult> {
     console.log('🇬🇧 Running UK Visa Jobs extractor...');
 
-    try {
-        // Clear previous results
-        await clearStorageDataset();
-        await mkdir(STORAGE_DIR, { recursive: true });
-
-        // Run the extractor using npx tsx directly (more reliable in Docker/different environments)
-        await new Promise<void>((resolve, reject) => {
-            const child = spawn('npx', ['tsx', 'src/main.ts'], {
-                cwd: UKVISAJOBS_DIR,
-                stdio: 'inherit',
-                env: {
-                    ...process.env,
-                    UKVISAJOBS_MAX_JOBS: String(options.maxJobs ?? 50),
-                    UKVISAJOBS_SEARCH_KEYWORD: options.searchKeyword ?? '',
-                },
-            });
-
-            child.on('close', (code) => {
-                if (code === 0) resolve();
-                else reject(new Error(`UK Visa Jobs extractor exited with code ${code}`));
-            });
-            child.on('error', reject);
-        });
-
-        // Read the output dataset
-        const jobs = await readDataset();
-        console.log(`✅ UK Visa Jobs: imported ${jobs.length} jobs`);
-
-        return { success: true, jobs };
-    } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`❌ UK Visa Jobs failed: ${message}`);
-        return { success: false, jobs: [], error: message };
+    // Determine terms to run
+    const terms: string[] = [];
+    if (options.searchTerms && options.searchTerms.length > 0) {
+        terms.push(...options.searchTerms);
+    } else if (options.searchKeyword) {
+        terms.push(options.searchKeyword);
+    } else {
+        // No search terms = run once without keyword
+        terms.push('');
     }
+
+    const allJobs: CreateJobInput[] = [];
+    const seenIds = new Set<string>();
+
+    for (const term of terms) {
+        const termLabel = term ? `"${term}"` : 'all jobs';
+        console.log(`   Running for ${termLabel}...`);
+
+        try {
+            // Clear previous results for this run
+            await clearStorageDataset();
+            await mkdir(STORAGE_DIR, { recursive: true });
+
+            // Run the extractor
+            await new Promise<void>((resolve, reject) => {
+                const child = spawn('npx', ['tsx', 'src/main.ts'], {
+                    cwd: UKVISAJOBS_DIR,
+                    stdio: 'inherit',
+                    env: {
+                        ...process.env,
+                        UKVISAJOBS_MAX_JOBS: String(options.maxJobs ?? 50),
+                        UKVISAJOBS_SEARCH_KEYWORD: term,
+                    },
+                });
+
+                child.on('close', (code) => {
+                    if (code === 0) resolve();
+                    else reject(new Error(`UK Visa Jobs extractor exited with code ${code}`));
+                });
+                child.on('error', reject);
+            });
+
+            // Read the output dataset and accumulate
+            const runJobs = await readDataset();
+            let newCount = 0;
+
+            for (const job of runJobs) {
+                // Deduplicate by sourceJobId or jobUrl
+                const id = job.sourceJobId || job.jobUrl;
+                if (!seenIds.has(id)) {
+                    seenIds.add(id);
+                    allJobs.push(job);
+                    newCount++;
+                }
+            }
+
+            console.log(`   ✅ Fetched ${runJobs.length} jobs for ${termLabel} (${newCount} new unique)`);
+
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            console.error(`❌ UK Visa Jobs failed for ${termLabel}: ${message}`);
+            // Continue to next term instead of failing completely
+        }
+    }
+
+    console.log(`✅ UK Visa Jobs: imported total ${allJobs.length} unique jobs`);
+    return { success: true, jobs: allJobs };
 }
 
 /**
