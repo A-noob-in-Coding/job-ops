@@ -6,6 +6,7 @@ import React from "react";
 import {
   Calendar,
   CheckCircle2,
+  Clock,
   Copy,
   DollarSign,
   Download,
@@ -49,6 +50,27 @@ const formatDate = (dateStr: string | null) => {
   }
 };
 
+const formatDateTime = (dateStr: string | null) => {
+  if (!dateStr) return null;
+  try {
+    const normalized = dateStr.includes("T") ? dateStr : dateStr.replace(" ", "T");
+    const parsed = new Date(normalized);
+    if (Number.isNaN(parsed.getTime())) return dateStr;
+    const date = parsed.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+    const time = parsed.toLocaleTimeString("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    return `${date} ${time}`;
+  } catch {
+    return dateStr;
+  }
+};
+
 const safeFilenamePart = (value: string) => value.replace(/[^a-z0-9]/gi, "_");
 
 export const JobCard: React.FC<JobCardProps> = ({
@@ -75,6 +97,7 @@ export const JobCard: React.FC<JobCardProps> = ({
   const jobLink = job.applicationLink || job.jobUrl;
   const pdfHref = `/pdfs/resume_${job.id}.pdf`;
   const deadline = formatDate(job.deadline);
+  const discoveredAt = formatDateTime(job.discoveredAt);
   const isHighlighted = highlightedJobId === job.id;
 
   const handleCopyInfo = async () => {
@@ -115,6 +138,12 @@ export const JobCard: React.FC<JobCardProps> = ({
             <span className="flex items-center gap-1">
               <Calendar className="h-4 w-4" />
               {deadline}
+            </span>
+          )}
+          {discoveredAt && (
+            <span className="flex items-center gap-1">
+              <Clock className="h-4 w-4" />
+              Discovered {discoveredAt}
             </span>
           )}
           {job.salary && (

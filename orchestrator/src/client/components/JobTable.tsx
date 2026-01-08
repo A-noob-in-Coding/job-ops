@@ -80,14 +80,22 @@ const defaultSortDirection: Record<JobSortKey, JobSortDirection> = {
   discoveredAt: "desc",
 };
 
-const formatDate = (dateStr: string | null) => {
+const formatDateTime = (dateStr: string | null) => {
   if (!dateStr) return null;
   try {
-    return new Date(dateStr).toLocaleDateString("en-GB", {
+    const normalized = dateStr.includes("T") ? dateStr : dateStr.replace(" ", "T");
+    const parsed = new Date(normalized);
+    if (Number.isNaN(parsed.getTime())) return dateStr;
+    const date = parsed.toLocaleDateString("en-GB", {
       day: "numeric",
       month: "short",
       year: "numeric",
     });
+    const time = parsed.toLocaleTimeString("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    return `${date} ${time}`;
   } catch {
     return dateStr;
   }
@@ -272,7 +280,7 @@ export const JobTable: React.FC<JobTableProps> = ({
               </TableCell>
 
               <TableCell className="tabular-nums text-muted-foreground">
-                {formatDate(job.discoveredAt)}
+                {formatDateTime(job.discoveredAt)}
               </TableCell>
 
               <TableCell className="pr-3 text-right">

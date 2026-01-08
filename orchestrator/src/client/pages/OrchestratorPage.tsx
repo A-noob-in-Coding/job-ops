@@ -8,6 +8,7 @@ import {
   Calendar,
   CheckCircle2,
   ChevronDown,
+  Clock,
   Copy,
   DollarSign,
   ExternalLink,
@@ -149,6 +150,27 @@ const formatDate = (dateStr: string | null) => {
       month: "short",
       year: "numeric",
     });
+  } catch {
+    return dateStr;
+  }
+};
+
+const formatDateTime = (dateStr: string | null) => {
+  if (!dateStr) return null;
+  try {
+    const normalized = dateStr.includes("T") ? dateStr : dateStr.replace(" ", "T");
+    const parsed = new Date(normalized);
+    if (Number.isNaN(parsed.getTime())) return dateStr;
+    const date = parsed.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+    const time = parsed.toLocaleTimeString("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    return `${date} ${time}`;
   } catch {
     return dateStr;
   }
@@ -494,6 +516,7 @@ export const OrchestratorPage: React.FC = () => {
   const selectedJobLink = selectedJob ? selectedJob.applicationLink || selectedJob.jobUrl : "#";
   const selectedPdfHref = selectedJob ? `/pdfs/resume_${selectedJob.id}.pdf` : "#";
   const selectedDeadline = selectedJob ? formatDate(selectedJob.deadline) : null;
+  const selectedDiscoveredAt = selectedJob ? formatDateTime(selectedJob.discoveredAt) : null;
   const canApply = selectedJob?.status === "ready";
   const canProcess = selectedJob ? ["discovered", "ready"].includes(selectedJob.status) : false;
   const canReject = selectedJob ? ["discovered", "ready"].includes(selectedJob.status) : false;
@@ -771,6 +794,12 @@ export const OrchestratorPage: React.FC = () => {
                               {formatDate(job.deadline)}
                             </span>
                           )}
+                          {job.discoveredAt && (
+                            <span className="flex items-center gap-1">
+                              <Clock className="h-3.5 w-3.5" />
+                              Discovered {formatDateTime(job.discoveredAt)}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-2">
@@ -818,6 +847,12 @@ export const OrchestratorPage: React.FC = () => {
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3.5 w-3.5" />
                       {selectedDeadline}
+                    </span>
+                  )}
+                  {selectedDiscoveredAt && (
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3.5 w-3.5" />
+                      Discovered {selectedDiscoveredAt}
                     </span>
                   )}
                   {selectedJob.salary && (
