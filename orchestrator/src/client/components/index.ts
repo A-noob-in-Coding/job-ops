@@ -7,4 +7,4 @@ export { JobTable } from './JobTable';
 export { JobList } from './JobList';
 export { PipelineProgress } from './PipelineProgress';
 export { TailoringEditor } from './TailoringEditor';
-
+export * from './layout';
