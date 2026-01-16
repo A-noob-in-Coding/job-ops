@@ -61,16 +61,6 @@ function createBasicAuthGuard() {
   };
 }
 
-function injectUmami(html: string): string {
-  const snippet =
-    '<script defer src="https://umami.dakheera47.com/script.js" data-website-id="0dc42ed1-87c3-4ac0-9409-5a9b9588fe66"></script>';
-  if (html.includes(snippet)) return html;
-  if (html.includes('</head>')) {
-    return html.replace('</head>', `${snippet}\n</head>`);
-  }
-  return `${html}\n${snippet}`;
-}
-
 export function createApp() {
   const app = express();
   const authGuard = createBasicAuthGuard();
@@ -121,9 +111,8 @@ export function createApp() {
       if (!cachedIndexHtml) {
         cachedIndexHtml = await readFile(indexPath, 'utf-8');
       }
-      const html = injectUmami(cachedIndexHtml);
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      res.send(html);
+      res.send(cachedIndexHtml);
     });
   }
 
