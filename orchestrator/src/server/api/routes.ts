@@ -761,8 +761,8 @@ const manualJobImportSchema = z.object({
   job: z.object({
     title: z.string().trim().min(1).max(500),
     employer: z.string().trim().min(1).max(500),
-    jobUrl: z.string().trim().max(2000).optional(),
-    applicationLink: z.string().trim().max(2000).optional(),
+    jobUrl: z.string().trim().url().max(2000).optional(),
+    applicationLink: z.string().trim().url().max(2000).optional(),
     location: z.string().trim().max(200).optional(),
     salary: z.string().trim().max(200).optional(),
     deadline: z.string().trim().max(100).optional(),
