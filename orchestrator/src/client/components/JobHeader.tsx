@@ -1,13 +1,18 @@
-import React from "react";
-import { Calendar, DollarSign, MapPin } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { Calendar, DollarSign, Loader2, MapPin, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, formatDate, sourceLabel } from "@/lib/utils";
 import type { Job, JobStatus } from "../../shared/types";
 import { defaultStatusToken, statusTokens } from "../pages/orchestrator/constants";
 
+import { useSettings } from "../hooks/useSettings";
+
 interface JobHeaderProps {
   job: Job;
   className?: string;
+  onCheckSponsor?: () => Promise<void>;
 }
 
 const StatusPill: React.FC<{ status: JobStatus }> = ({ status }) => {
@@ -42,7 +47,101 @@ const ScoreMeter: React.FC<{ score: number | null }> = ({ score }) => {
   );
 };
 
-export const JobHeader: React.FC<JobHeaderProps> = ({ job, className }) => {
+interface SponsorPillProps {
+  score: number | null;
+  names: string | null;
+  onCheck?: () => Promise<void>;
+}
+
+const SponsorPill: React.FC<SponsorPillProps> = ({ score, names, onCheck }) => {
+  const [isChecking, setIsChecking] = useState(false);
+
+  const parsedNames = useMemo(() => {
+    if (!names) return [];
+    try {
+      return JSON.parse(names) as string[];
+    } catch {
+      return [];
+    }
+  }, [names]);
+
+  const handleCheck = async () => {
+    if (!onCheck) return;
+    setIsChecking(true);
+    try {
+      await onCheck();
+    } finally {
+      setIsChecking(false);
+    }
+  };
+
+  // Show "Check" button if no score and callback provided
+  if (score == null && onCheck) {
+    return (
+      <TooltipProvider>
+        <Tooltip delayDuration={0}>
+          <TooltipTrigger asChild>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-5 px-1.5 text-xs font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+              onClick={handleCheck}
+              disabled={isChecking}
+            >
+              {isChecking ? (
+                <Loader2 className="h-2 w-2 animate-spin" />
+              ) : (
+                <Search className="h-2 w-2" />
+              )}
+              <span>{isChecking ? "Checking..." : "Check Sponsorship Status"}</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <p className="text-xs">Check if employer is a visa sponsor</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  if (score == null) {
+    return null;
+  }
+
+  const getStatus = (s: number) => {
+    if (s >= 95) return { label: "Confirmed Sponsor", dot: "bg-emerald-500", color: "text-emerald-400" };
+    if (s >= 80) return { label: "Potential Sponsor", dot: "bg-amber-500", color: "text-amber-400" };
+    return { label: "Sponsor Not Found", dot: "bg-slate-500", color: "text-slate-400" };
+  };
+
+  const status = getStatus(score);
+  const tooltipContent = `${score}% match`;
+
+  return (
+    <TooltipProvider>
+      <Tooltip delayDuration={0}>
+        <TooltipTrigger asChild>
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/80 cursor-help">
+            <span className={cn("h-1.5 w-1.5 rounded-full opacity-80", status.dot)} />
+            {status.label}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-xs">
+          {parsedNames.length > 0 && (
+            <p className="text-xs font-medium space-x-1">
+              <span className="opacity-70">Matched</span>
+              <span>{parsedNames.join(", ")}</span>
+            </p>
+          )}
+          <p className="opacity-80 mt-1 text-[10px]">{tooltipContent}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
+
+export const JobHeader: React.FC<JobHeaderProps> = ({ job, className, onCheckSponsor }) => {
+  const { showSponsorInfo } = useSettings();
   const deadline = formatDate(job.deadline);
 
   return (
@@ -51,7 +150,9 @@ export const JobHeader: React.FC<JobHeaderProps> = ({ job, className }) => {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="truncate text-base font-semibold text-foreground/90">{job.title}</div>
-          <div className="text-xs text-muted-foreground">{job.employer}</div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>{job.employer}</span>
+          </div>
         </div>
         <Badge variant="outline" className="text-[10px] uppercase tracking-wide text-muted-foreground border-border/50">
           {sourceLabel[job.source]}
@@ -82,7 +183,16 @@ export const JobHeader: React.FC<JobHeaderProps> = ({ job, className }) => {
 
       {/* Status and score: single line, subdued */}
       <div className="flex items-center justify-between gap-2 py-1 border-y border-border/30">
-        <StatusPill status={job.status} />
+        <div className="flex items-center gap-4">
+          <StatusPill status={job.status} />
+          {showSponsorInfo && (
+            <SponsorPill
+              score={job.sponsorMatchScore}
+              names={job.sponsorMatchNames}
+              onCheck={onCheckSponsor}
+            />
+          )}
+        </div>
         <ScoreMeter score={job.suitabilityScore} />
       </div>
     </div>

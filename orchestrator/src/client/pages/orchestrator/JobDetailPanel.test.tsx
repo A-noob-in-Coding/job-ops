@@ -31,6 +31,9 @@ vi.mock("../../components", () => ({
   DiscoveredPanel: ({ job }: { job: Job | null }) => (
     <div data-testid="discovered-panel">{job?.id ?? "no-job"}</div>
   ),
+  JobHeader: () => <div data-testid="job-header" />,
+  FitAssessment: () => <div data-testid="fit-assessment" />,
+  TailoredSummary: () => <div data-testid="tailored-summary" />,
 }));
 
 vi.mock("../../components/ReadyPanel", () => ({
@@ -100,6 +103,8 @@ const createJob = (overrides: Partial<Job> = {}): Job => ({
   selectedProjectIds: null,
   pdfPath: null,
   notionPageId: null,
+  sponsorMatchScore: null,
+  sponsorMatchNames: null,
   jobType: null,
   salarySource: null,
   salaryInterval: null,

@@ -22,6 +22,7 @@ import { extractProjectsFromProfile, resolveResumeProjectsSettings } from '../se
 import * as jobsRepo from '../repositories/jobs.js';
 import * as pipelineRepo from '../repositories/pipeline.js';
 import * as settingsRepo from '../repositories/settings.js';
+import * as visaSponsors from '../services/visa-sponsors/index.js';
 import { progressHelpers, resetProgress, updateProgress } from './progress.js';
 import type { CreateJobInput, Job, JobSource, PipelineConfig } from '../../shared/types.js';
 import { getDataDir } from '../config/dataDir.js';
@@ -293,10 +294,27 @@ export async function runPipeline(config: Partial<PipelineConfig> = {}): Promise
         suitabilityReason: reason,
       });
 
-      // Update score in database
+      // Calculate sponsor match score using fuzzy search
+      let sponsorMatchScore = 0;
+      let sponsorMatchNames: string | undefined;
+
+      if (job.employer) {
+        const sponsorResults = visaSponsors.searchSponsors(job.employer, {
+          limit: 10,
+          minScore: 50,
+        });
+
+        const summary = visaSponsors.calculateSponsorMatchSummary(sponsorResults);
+        sponsorMatchScore = summary.sponsorMatchScore;
+        sponsorMatchNames = summary.sponsorMatchNames ?? undefined;
+      }
+
+      // Update score and sponsor match in database
       await jobsRepo.updateJob(job.id, {
         suitabilityScore: score,
         suitabilityReason: reason,
+        sponsorMatchScore,
+        sponsorMatchNames,
       });
     }
 

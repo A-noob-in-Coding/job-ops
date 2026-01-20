@@ -70,7 +70,7 @@ describe.sequential('Jobs API routes', () => {
 
   it('applies a job and syncs to Notion', async () => {
     const { createNotionEntry } = await import('../../services/notion.js');
-    vi.mocked(createNotionEntry).mockResolvedValue({ pageId: 'page-123' });
+    vi.mocked(createNotionEntry).mockResolvedValue({ success: true, pageId: 'page-123' });
 
     const { createJob } = await import('../../repositories/jobs.js');
     const job = await createJob({
@@ -94,5 +94,27 @@ describe.sequential('Jobs API routes', () => {
         employer: job.employer,
       })
     );
+  });
+
+  it('checks visa sponsor status for a job', async () => {
+    const { searchSponsors } = await import('../../services/visa-sponsors/index.js');
+    vi.mocked(searchSponsors).mockReturnValue([
+      { sponsor: { organisationName: 'ACME CORP SPONSOR' } as any, score: 100, matchedName: 'acme corp sponsor' }
+    ]);
+
+    const { createJob } = await import('../../repositories/jobs.js');
+    const job = await createJob({
+      source: 'manual',
+      title: 'Sponsored Dev',
+      employer: 'Acme',
+      jobUrl: 'https://example.com/job/4',
+    });
+
+    const res = await fetch(`${baseUrl}/api/jobs/${job.id}/check-sponsor`, { method: 'POST' });
+    const body = await res.json();
+
+    expect(body.success).toBe(true);
+    expect(body.data.sponsorMatchScore).toBe(100);
+    expect(body.data.sponsorMatchNames).toContain('ACME CORP SPONSOR');
   });
 });

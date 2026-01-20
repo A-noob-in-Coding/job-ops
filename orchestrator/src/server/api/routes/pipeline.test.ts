@@ -54,11 +54,14 @@ describe.sequential('Pipeline API routes', () => {
 
     const reader = res.body?.getReader();
     if (reader) {
-      const chunk = await reader.read();
-      controller.abort();
-      await reader.cancel();
-      const text = new TextDecoder().decode(chunk.value);
-      expect(text).toContain('data:');
+      try {
+        const { value } = await reader.read();
+        const text = new TextDecoder().decode(value);
+        expect(text).toContain('data:');
+      } finally {
+        await reader.cancel();
+        controller.abort();
+      }
     } else {
       controller.abort();
     }
