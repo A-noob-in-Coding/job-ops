@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Calendar, DollarSign, Loader2, MapPin, Search, Shield } from "lucide-react";
+import { Calendar, DollarSign, Loader2, MapPin, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
