@@ -383,4 +383,15 @@ export interface AppSettings {
   showSponsorInfo: boolean;
   defaultShowSponsorInfo: boolean;
   overrideShowSponsorInfo: boolean | null;
+  openrouterApiKeyHint: string | null;
+  rxresumeEmail: string | null;
+  rxresumePasswordHint: string | null;
+  basicAuthUser: string | null;
+  basicAuthPasswordHint: string | null;
+  ukvisajobsEmail: string | null;
+  ukvisajobsPasswordHint: string | null;
+  ukvisajobsHeadless: boolean;
+  webhookSecretHint: string | null;
+  notionApiKeyHint: string | null;
+  notionDatabaseId: string | null;
 }

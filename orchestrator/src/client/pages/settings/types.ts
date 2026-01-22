@@ -22,3 +22,21 @@ export type JobspyValues = {
   countryIndeed: EffectiveDefault<string>
   linkedinFetchDescription: EffectiveDefault<boolean>
 }
+
+export type EnvSettingsValues = {
+  readable: {
+    rxresumeEmail: string
+    ukvisajobsEmail: string
+    basicAuthUser: string
+    notionDatabaseId: string
+    ukvisajobsHeadless: boolean
+  }
+  private: {
+    openrouterApiKeyHint: string | null
+    rxresumePasswordHint: string | null
+    ukvisajobsPasswordHint: string | null
+    basicAuthPasswordHint: string | null
+    webhookSecretHint: string | null
+    notionApiKeyHint: string | null
+  }
+}

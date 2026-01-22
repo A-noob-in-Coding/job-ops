@@ -24,6 +24,17 @@ export const updateSettingsSchema = z.object({
   jobspySites: z.array(z.string().trim().min(1).max(50)).max(20).nullable().optional(),
   jobspyLinkedinFetchDescription: z.boolean().nullable().optional(),
   showSponsorInfo: z.boolean().nullable().optional(),
+  openrouterApiKey: z.string().trim().max(2000).nullable().optional(),
+  rxresumeEmail: z.string().trim().max(200).nullable().optional(),
+  rxresumePassword: z.string().trim().max(2000).nullable().optional(),
+  basicAuthUser: z.string().trim().max(200).nullable().optional(),
+  basicAuthPassword: z.string().trim().max(2000).nullable().optional(),
+  ukvisajobsEmail: z.string().trim().max(200).nullable().optional(),
+  ukvisajobsPassword: z.string().trim().max(2000).nullable().optional(),
+  ukvisajobsHeadless: z.boolean().nullable().optional(),
+  webhookSecret: z.string().trim().max(2000).nullable().optional(),
+  notionApiKey: z.string().trim().max(2000).nullable().optional(),
+  notionDatabaseId: z.string().trim().max(200).nullable().optional(),
 });
 
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;

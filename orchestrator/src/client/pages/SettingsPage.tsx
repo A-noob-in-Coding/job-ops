@@ -14,6 +14,7 @@ import { arraysEqual } from "@/lib/utils"
 import { resumeProjectsEqual } from "@client/pages/settings/utils"
 import { DangerZoneSection } from "@client/pages/settings/components/DangerZoneSection"
 import { DisplaySettingsSection } from "@client/pages/settings/components/DisplaySettingsSection"
+import { EnvironmentSettingsSection } from "@client/pages/settings/components/EnvironmentSettingsSection"
 import { GradcrackerSection } from "@client/pages/settings/components/GradcrackerSection"
 import { JobCompleteWebhookSection } from "@client/pages/settings/components/JobCompleteWebhookSection"
 import { JobspySection } from "@client/pages/settings/components/JobspySection"
@@ -41,6 +42,17 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   jobspySites: null,
   jobspyLinkedinFetchDescription: null,
   showSponsorInfo: null,
+  openrouterApiKey: "",
+  rxresumeEmail: "",
+  rxresumePassword: "",
+  basicAuthUser: "",
+  basicAuthPassword: "",
+  ukvisajobsEmail: "",
+  ukvisajobsPassword: "",
+  ukvisajobsHeadless: null,
+  webhookSecret: "",
+  notionApiKey: "",
+  notionDatabaseId: "",
 }
 
 const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
@@ -61,6 +73,17 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   jobspySites: null,
   jobspyLinkedinFetchDescription: null,
   showSponsorInfo: null,
+  openrouterApiKey: null,
+  rxresumeEmail: null,
+  rxresumePassword: null,
+  basicAuthUser: null,
+  basicAuthPassword: null,
+  ukvisajobsEmail: null,
+  ukvisajobsPassword: null,
+  ukvisajobsHeadless: null,
+  webhookSecret: null,
+  notionApiKey: null,
+  notionDatabaseId: null,
 }
 
 const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
@@ -81,11 +104,27 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   jobspySites: data.overrideJobspySites,
   jobspyLinkedinFetchDescription: data.overrideJobspyLinkedinFetchDescription,
   showSponsorInfo: data.overrideShowSponsorInfo,
+  openrouterApiKey: "",
+  rxresumeEmail: data.rxresumeEmail ?? "",
+  rxresumePassword: "",
+  basicAuthUser: data.basicAuthUser ?? "",
+  basicAuthPassword: "",
+  ukvisajobsEmail: data.ukvisajobsEmail ?? "",
+  ukvisajobsPassword: "",
+  ukvisajobsHeadless: data.ukvisajobsHeadless,
+  webhookSecret: "",
+  notionApiKey: "",
+  notionDatabaseId: data.notionDatabaseId ?? "",
 })
 
 const normalizeString = (value: string | null | undefined) => {
   const trimmed = value?.trim()
   return trimmed ? trimmed : null
+}
+
+const normalizePrivateInput = (value: string | null | undefined) => {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : undefined
 }
 
 const isSameStringList = (left: string[] | null | undefined, right: string[] | null | undefined) => {
@@ -170,6 +209,23 @@ const getDerivedSettings = (settings: AppSettings | null) => {
       effective: settings?.showSponsorInfo ?? true,
       default: settings?.defaultShowSponsorInfo ?? true,
     },
+    envSettings: {
+      readable: {
+        rxresumeEmail: settings?.rxresumeEmail ?? "",
+        ukvisajobsEmail: settings?.ukvisajobsEmail ?? "",
+        basicAuthUser: settings?.basicAuthUser ?? "",
+        notionDatabaseId: settings?.notionDatabaseId ?? "",
+        ukvisajobsHeadless: settings?.ukvisajobsHeadless ?? true,
+      },
+      private: {
+        openrouterApiKeyHint: settings?.openrouterApiKeyHint ?? null,
+        rxresumePasswordHint: settings?.rxresumePasswordHint ?? null,
+        ukvisajobsPasswordHint: settings?.ukvisajobsPasswordHint ?? null,
+        basicAuthPasswordHint: settings?.basicAuthPasswordHint ?? null,
+        webhookSecretHint: settings?.webhookSecretHint ?? null,
+        notionApiKeyHint: settings?.notionApiKeyHint ?? null,
+      },
+    },
     defaultResumeProjects: settings?.defaultResumeProjects ?? null,
     profileProjects,
     maxProjectsTotal: profileProjects.length,
@@ -188,7 +244,7 @@ export const SettingsPage: React.FC = () => {
     defaultValues: DEFAULT_FORM_VALUES,
   })
 
-  const { handleSubmit, reset, watch, formState: { isDirty, errors, isValid } } = methods
+  const { handleSubmit, reset, watch, formState: { isDirty, errors, isValid, dirtyFields } } = methods
 
   useEffect(() => {
     let isMounted = true
@@ -224,6 +280,7 @@ export const SettingsPage: React.FC = () => {
     searchTerms,
     jobspy,
     display,
+    envSettings,
     defaultResumeProjects,
     profileProjects,
     maxProjectsTotal,
@@ -244,6 +301,58 @@ export const SettingsPage: React.FC = () => {
       const resumeProjectsOverride = (resumeProjectsData && defaultResumeProjects && resumeProjectsEqual(resumeProjectsData, defaultResumeProjects))
         ? null
         : resumeProjectsData
+
+      const envPayload: Partial<UpdateSettingsInput> = {}
+
+      if (dirtyFields.rxresumeEmail) {
+        envPayload.rxresumeEmail = normalizeString(data.rxresumeEmail)
+      }
+
+      if (dirtyFields.ukvisajobsEmail) {
+        envPayload.ukvisajobsEmail = normalizeString(data.ukvisajobsEmail)
+      }
+
+      if (dirtyFields.basicAuthUser) {
+        envPayload.basicAuthUser = normalizeString(data.basicAuthUser)
+      }
+
+      if (dirtyFields.notionDatabaseId) {
+        envPayload.notionDatabaseId = normalizeString(data.notionDatabaseId)
+      }
+
+      if (dirtyFields.ukvisajobsHeadless) {
+        envPayload.ukvisajobsHeadless = data.ukvisajobsHeadless ?? null
+      }
+
+      if (dirtyFields.openrouterApiKey) {
+        const value = normalizePrivateInput(data.openrouterApiKey)
+        if (value !== undefined) envPayload.openrouterApiKey = value
+      }
+
+      if (dirtyFields.rxresumePassword) {
+        const value = normalizePrivateInput(data.rxresumePassword)
+        if (value !== undefined) envPayload.rxresumePassword = value
+      }
+
+      if (dirtyFields.ukvisajobsPassword) {
+        const value = normalizePrivateInput(data.ukvisajobsPassword)
+        if (value !== undefined) envPayload.ukvisajobsPassword = value
+      }
+
+      if (dirtyFields.basicAuthPassword) {
+        const value = normalizePrivateInput(data.basicAuthPassword)
+        if (value !== undefined) envPayload.basicAuthPassword = value
+      }
+
+      if (dirtyFields.webhookSecret) {
+        const value = normalizePrivateInput(data.webhookSecret)
+        if (value !== undefined) envPayload.webhookSecret = value
+      }
+
+      if (dirtyFields.notionApiKey) {
+        const value = normalizePrivateInput(data.notionApiKey)
+        if (value !== undefined) envPayload.notionApiKey = value
+      }
 
       const payload: UpdateSettingsInput = {
         model: normalizeString(data.model),
@@ -266,6 +375,7 @@ export const SettingsPage: React.FC = () => {
           jobspy.linkedinFetchDescription.default
         ),
         showSponsorInfo: nullIfSame(data.showSponsorInfo, display.default),
+        ...envPayload,
       }
 
       const updated = await api.updateSettings(payload)
@@ -404,6 +514,11 @@ export const SettingsPage: React.FC = () => {
           />
           <DisplaySettingsSection
             values={display}
+            isLoading={isLoading}
+            isSaving={isSaving}
+          />
+          <EnvironmentSettingsSection
+            values={envSettings}
             isLoading={isLoading}
             isSaving={isSaving}
           />

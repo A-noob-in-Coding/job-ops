@@ -95,6 +95,17 @@ const baseSettings: AppSettings = {
   showSponsorInfo: true,
   defaultShowSponsorInfo: true,
   overrideShowSponsorInfo: null,
+  openrouterApiKeyHint: null,
+  rxresumeEmail: "",
+  rxresumePasswordHint: null,
+  basicAuthUser: "",
+  basicAuthPasswordHint: null,
+  ukvisajobsEmail: "",
+  ukvisajobsPasswordHint: null,
+  ukvisajobsHeadless: true,
+  webhookSecretHint: null,
+  notionApiKeyHint: null,
+  notionDatabaseId: "",
 }
 
 const renderPage = () => {

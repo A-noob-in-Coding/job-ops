@@ -2,6 +2,12 @@ import { Router, Request, Response } from 'express';
 import { updateSettingsSchema } from '@shared/settings-schema.js';
 import * as settingsRepo from '@server/repositories/settings.js';
 import {
+  applyEnvValue,
+  getEnvSettingsData,
+  normalizeEnvInput,
+  serializeEnvBoolean,
+} from '@server/services/envSettings.js';
+import {
   extractProjectsFromProfile,
   normalizeResumeProjectsSettings,
   resolveResumeProjectsSettings,
@@ -97,6 +103,8 @@ settingsRouter.get('/', async (_req: Request, res: Response) => {
       : null;
     const showSponsorInfo = overrideShowSponsorInfo ?? defaultShowSponsorInfo;
 
+    const envSettings = await getEnvSettingsData();
+
     res.json({
       success: true,
       data: {
@@ -146,6 +154,7 @@ settingsRouter.get('/', async (_req: Request, res: Response) => {
         showSponsorInfo,
         defaultShowSponsorInfo,
         overrideShowSponsorInfo,
+        ...envSettings,
       },
     });
   } catch (error) {
@@ -256,6 +265,73 @@ settingsRouter.patch('/', async (req: Request, res: Response) => {
       await settingsRepo.setSetting('showSponsorInfo', value !== null ? (value ? '1' : '0') : null);
     }
 
+    if ('openrouterApiKey' in input) {
+      const value = normalizeEnvInput(input.openrouterApiKey);
+      await settingsRepo.setSetting('openrouterApiKey', value);
+      applyEnvValue('OPENROUTER_API_KEY', value);
+    }
+
+    if ('rxresumeEmail' in input) {
+      const value = normalizeEnvInput(input.rxresumeEmail);
+      await settingsRepo.setSetting('rxresumeEmail', value);
+      applyEnvValue('RXRESUME_EMAIL', value);
+    }
+
+    if ('rxresumePassword' in input) {
+      const value = normalizeEnvInput(input.rxresumePassword);
+      await settingsRepo.setSetting('rxresumePassword', value);
+      applyEnvValue('RXRESUME_PASSWORD', value);
+    }
+
+    if ('basicAuthUser' in input) {
+      const value = normalizeEnvInput(input.basicAuthUser);
+      await settingsRepo.setSetting('basicAuthUser', value);
+      applyEnvValue('BASIC_AUTH_USER', value);
+    }
+
+    if ('basicAuthPassword' in input) {
+      const value = normalizeEnvInput(input.basicAuthPassword);
+      await settingsRepo.setSetting('basicAuthPassword', value);
+      applyEnvValue('BASIC_AUTH_PASSWORD', value);
+    }
+
+    if ('ukvisajobsEmail' in input) {
+      const value = normalizeEnvInput(input.ukvisajobsEmail);
+      await settingsRepo.setSetting('ukvisajobsEmail', value);
+      applyEnvValue('UKVISAJOBS_EMAIL', value);
+    }
+
+    if ('ukvisajobsPassword' in input) {
+      const value = normalizeEnvInput(input.ukvisajobsPassword);
+      await settingsRepo.setSetting('ukvisajobsPassword', value);
+      applyEnvValue('UKVISAJOBS_PASSWORD', value);
+    }
+
+    if ('ukvisajobsHeadless' in input) {
+      const value = input.ukvisajobsHeadless ?? null;
+      const serialized = serializeEnvBoolean(value);
+      await settingsRepo.setSetting('ukvisajobsHeadless', serialized);
+      applyEnvValue('UKVISAJOBS_HEADLESS', serialized);
+    }
+
+    if ('webhookSecret' in input) {
+      const value = normalizeEnvInput(input.webhookSecret);
+      await settingsRepo.setSetting('webhookSecret', value);
+      applyEnvValue('WEBHOOK_SECRET', value);
+    }
+
+    if ('notionApiKey' in input) {
+      const value = normalizeEnvInput(input.notionApiKey);
+      await settingsRepo.setSetting('notionApiKey', value);
+      applyEnvValue('NOTION_API_KEY', value);
+    }
+
+    if ('notionDatabaseId' in input) {
+      const value = normalizeEnvInput(input.notionDatabaseId);
+      await settingsRepo.setSetting('notionDatabaseId', value);
+      applyEnvValue('NOTION_DATABASE_ID', value);
+    }
+
     const overrideModel = await settingsRepo.getSetting('model');
     const defaultModel = process.env.MODEL || 'openai/gpt-4o-mini';
     const model = overrideModel || defaultModel;
@@ -338,6 +414,8 @@ settingsRouter.patch('/', async (req: Request, res: Response) => {
       : null;
     const showSponsorInfo = overrideShowSponsorInfo ?? defaultShowSponsorInfo;
 
+    const envSettings = await getEnvSettingsData();
+
     res.json({
       success: true,
       data: {
@@ -387,6 +465,7 @@ settingsRouter.patch('/', async (req: Request, res: Response) => {
         showSponsorInfo,
         defaultShowSponsorInfo,
         overrideShowSponsorInfo,
+        ...envSettings,
       },
     });
   } catch (error) {

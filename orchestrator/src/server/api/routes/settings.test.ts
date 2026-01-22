@@ -9,7 +9,13 @@ describe.sequential('Settings API routes', () => {
   let tempDir: string;
 
   beforeEach(async () => {
-    ({ server, baseUrl, closeDb, tempDir } = await startServer());
+    ({ server, baseUrl, closeDb, tempDir } = await startServer({
+      env: {
+        OPENROUTER_API_KEY: 'secret-key',
+        RXRESUME_EMAIL: 'resume@example.com',
+        UKVISAJOBS_HEADLESS: 'false',
+      },
+    }));
   });
 
   afterEach(async () => {
@@ -22,6 +28,9 @@ describe.sequential('Settings API routes', () => {
     expect(body.success).toBe(true);
     expect(body.data.defaultModel).toBe('test-model');
     expect(Array.isArray(body.data.searchTerms)).toBe(true);
+    expect(body.data.rxresumeEmail).toBe('resume@example.com');
+    expect(body.data.openrouterApiKeyHint).toBe('secr');
+    expect(body.data.ukvisajobsHeadless).toBe(false);
   });
 
   it('rejects invalid settings updates and persists overrides', async () => {
@@ -35,11 +44,19 @@ describe.sequential('Settings API routes', () => {
     const patchRes = await fetch(`${baseUrl}/api/settings`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ searchTerms: ['engineer'] }),
+      body: JSON.stringify({
+        searchTerms: ['engineer'],
+        rxresumeEmail: 'updated@example.com',
+        openrouterApiKey: 'updated-secret',
+        ukvisajobsHeadless: true,
+      }),
     });
     const patchBody = await patchRes.json();
     expect(patchBody.success).toBe(true);
     expect(patchBody.data.searchTerms).toEqual(['engineer']);
     expect(patchBody.data.overrideSearchTerms).toEqual(['engineer']);
+    expect(patchBody.data.rxresumeEmail).toBe('updated@example.com');
+    expect(patchBody.data.openrouterApiKeyHint).toBe('upda');
+    expect(patchBody.data.ukvisajobsHeadless).toBe(true);
   });
 });

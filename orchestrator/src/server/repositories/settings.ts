@@ -24,6 +24,17 @@ export type SettingKey = 'model'
   | 'jobspySites'
   | 'jobspyLinkedinFetchDescription'
   | 'showSponsorInfo'
+  | 'openrouterApiKey'
+  | 'rxresumeEmail'
+  | 'rxresumePassword'
+  | 'basicAuthUser'
+  | 'basicAuthPassword'
+  | 'ukvisajobsEmail'
+  | 'ukvisajobsPassword'
+  | 'ukvisajobsHeadless'
+  | 'webhookSecret'
+  | 'notionApiKey'
+  | 'notionDatabaseId'
 
 export async function getSetting(key: SettingKey): Promise<string | null> {
   const [row] = await db.select().from(settings).where(eq(settings.key, key))
