@@ -32,6 +32,7 @@ export const updateSettingsSchema = z.object({
   ukvisajobsEmail: z.string().trim().max(200).nullable().optional(),
   ukvisajobsPassword: z.string().trim().max(2000).nullable().optional(),
   webhookSecret: z.string().trim().max(2000).nullable().optional(),
+  enableBasicAuth: z.boolean().optional(),
 });
 
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;

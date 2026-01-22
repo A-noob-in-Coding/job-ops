@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react"
-import { useFormContext } from "react-hook-form"
+import React from "react"
+import { useFormContext, Controller } from "react-hook-form"
 
 import { AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -21,14 +21,10 @@ export const EnvironmentSettingsSection: React.FC<EnvironmentSettingsSectionProp
   isLoading,
   isSaving,
 }) => {
-  const { register, formState: { errors } } = useFormContext<UpdateSettingsInput>()
-  const { private: privateValues, basicAuthActive } = values
+  const { register, control, watch, formState: { errors } } = useFormContext<UpdateSettingsInput>()
+  const { private: privateValues } = values
 
-  const [isBasicAuthEnabled, setIsBasicAuthEnabled] = useState(basicAuthActive)
-
-  useEffect(() => {
-    setIsBasicAuthEnabled(basicAuthActive)
-  }, [basicAuthActive])
+  const isBasicAuthEnabled = watch("enableBasicAuth")
 
   return (
     <AccordionItem value="environment" className="border rounded-lg px-4">
@@ -110,11 +106,17 @@ export const EnvironmentSettingsSection: React.FC<EnvironmentSettingsSectionProp
           <div className="space-y-4">
             <div className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Security</div>
             <div className="flex items-start space-x-3">
-              <Checkbox
-                id="enableBasicAuth"
-                checked={isBasicAuthEnabled}
-                onCheckedChange={(checked) => setIsBasicAuthEnabled(checked === true)}
-                disabled={isLoading || isSaving}
+              <Controller
+                name="enableBasicAuth"
+                control={control}
+                render={({ field }) => (
+                  <Checkbox
+                    id="enableBasicAuth"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    disabled={isLoading || isSaving}
+                  />
+                )}
               />
               <div className="flex flex-col gap-1.5">
                 <label

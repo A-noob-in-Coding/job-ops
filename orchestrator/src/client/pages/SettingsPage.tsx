@@ -49,6 +49,7 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   ukvisajobsEmail: "",
   ukvisajobsPassword: "",
   webhookSecret: "",
+  enableBasicAuth: false,
 }
 
 const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
@@ -105,6 +106,7 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   ukvisajobsEmail: data.ukvisajobsEmail ?? "",
   ukvisajobsPassword: "",
   webhookSecret: "",
+  enableBasicAuth: data.basicAuthActive,
 })
 
 const normalizeString = (value: string | null | undefined) => {
@@ -284,7 +286,7 @@ export const SettingsPage: React.FC = () => {
     if (!settings) return
     try {
       setIsSaving(true)
-      
+
       // Prepare payload: nullify if equal to default
       const resumeProjectsData = data.resumeProjects
       const resumeProjectsOverride = (resumeProjectsData && defaultResumeProjects && resumeProjectsEqual(resumeProjectsData, defaultResumeProjects))
@@ -301,8 +303,18 @@ export const SettingsPage: React.FC = () => {
         envPayload.ukvisajobsEmail = normalizeString(data.ukvisajobsEmail)
       }
 
-      if (dirtyFields.basicAuthUser) {
-        envPayload.basicAuthUser = normalizeString(data.basicAuthUser)
+      if (data.enableBasicAuth === false) {
+        envPayload.basicAuthUser = null
+        envPayload.basicAuthPassword = null
+      } else {
+        if (dirtyFields.basicAuthUser) {
+          envPayload.basicAuthUser = normalizeString(data.basicAuthUser)
+        }
+
+        if (dirtyFields.basicAuthPassword) {
+          const value = normalizePrivateInput(data.basicAuthPassword)
+          if (value !== undefined) envPayload.basicAuthPassword = value
+        }
       }
 
       if (dirtyFields.openrouterApiKey) {
@@ -318,11 +330,6 @@ export const SettingsPage: React.FC = () => {
       if (dirtyFields.ukvisajobsPassword) {
         const value = normalizePrivateInput(data.ukvisajobsPassword)
         if (value !== undefined) envPayload.ukvisajobsPassword = value
-      }
-
-      if (dirtyFields.basicAuthPassword) {
-        const value = normalizePrivateInput(data.basicAuthPassword)
-        if (value !== undefined) envPayload.basicAuthPassword = value
       }
 
       if (dirtyFields.webhookSecret) {
@@ -353,6 +360,11 @@ export const SettingsPage: React.FC = () => {
         showSponsorInfo: nullIfSame(data.showSponsorInfo, display.default),
         ...envPayload,
       }
+
+      // Remove virtual field because the backend doesn't expect it
+      // this exists only to toggle the UI
+      // need o track it so that the save button is enabled when it changes
+      delete payload.enableBasicAuth
 
       const updated = await api.updateSettings(payload)
       setSettings(updated)

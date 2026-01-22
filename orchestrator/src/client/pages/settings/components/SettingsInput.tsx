@@ -23,10 +23,16 @@ export const SettingsInput: React.FC<SettingsInputProps> = ({
   helper,
   current,
 }) => {
+  const id = inputProps.id || inputProps.name
+
   return (
     <div className="space-y-2">
-      <div className="text-sm font-medium">{label}</div>
-      <Input {...inputProps} type={type} placeholder={placeholder} disabled={disabled} />
+      {label && (
+        <label htmlFor={id} className="text-sm font-medium">
+          {label}
+        </label>
+      )}
+      <Input {...inputProps} id={id} type={type} placeholder={placeholder} disabled={disabled} />
       {error && <p className="text-xs text-destructive">{error}</p>}
       {helper && <div className="text-xs text-muted-foreground">{helper}</div>}
       {current !== undefined && (
