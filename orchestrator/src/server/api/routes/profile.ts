@@ -7,11 +7,24 @@ import { resumeDataSchema } from '@shared/rxresume-schema.js';
 
 export const profileRouter = Router();
 
+async function profileExists(): Promise<boolean> {
+  try {
+    const fileInfo = await stat(DEFAULT_PROFILE_PATH);
+    return fileInfo.isFile() && fileInfo.size > 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * GET /api/profile/projects - Get all projects available in the base resume
  */
 profileRouter.get('/projects', async (req: Request, res: Response) => {
   try {
+    if (!(await profileExists())) {
+      res.json({ success: true, data: [] });
+      return;
+    }
     const profile = await getProfile();
     const { catalog } = extractProjectsFromProfile(profile);
     res.json({ success: true, data: catalog });
@@ -26,6 +39,10 @@ profileRouter.get('/projects', async (req: Request, res: Response) => {
  */
 profileRouter.get('/', async (req: Request, res: Response) => {
   try {
+    if (!(await profileExists())) {
+      res.json({ success: true, data: null });
+      return;
+    }
     const profile = await getProfile();
     res.json({ success: true, data: profile });
   } catch (error) {

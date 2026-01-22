@@ -18,6 +18,24 @@ describe.sequential('Profile API routes', () => {
     await stopServer({ server, closeDb, tempDir });
   });
 
+  it('returns empty projects when resume is missing', async () => {
+    const res = await fetch(`${baseUrl}/api/profile/projects`);
+    const body = await res.json();
+
+    expect(res.ok).toBe(true);
+    expect(body.success).toBe(true);
+    expect(body.data).toEqual([]);
+  });
+
+  it('returns null profile when resume is missing', async () => {
+    const res = await fetch(`${baseUrl}/api/profile`);
+    const body = await res.json();
+
+    expect(res.ok).toBe(true);
+    expect(body.success).toBe(true);
+    expect(body.data).toBeNull();
+  });
+
   it('returns base resume projects', async () => {
     // Create valid resume file first
     const resumePath = join(tempDir, 'resume.json');
