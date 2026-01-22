@@ -21,6 +21,7 @@ import type {
   VisaSponsor,
   ResumeProfile,
   ProfileStatusResponse,
+  ValidationResult,
 } from '../../shared/types';
 import { trackEvent } from "@/lib/analytics";
 
@@ -188,6 +189,24 @@ export async function uploadProfile(profile: ResumeProfile): Promise<ProfileStat
     method: 'POST',
     body: JSON.stringify({ profile }),
   });
+}
+
+export async function validateOpenrouter(apiKey?: string): Promise<ValidationResult> {
+  return fetchApi<ValidationResult>('/onboarding/validate/openrouter', {
+    method: 'POST',
+    body: JSON.stringify({ apiKey }),
+  });
+}
+
+export async function validateRxresume(email?: string, password?: string): Promise<ValidationResult> {
+  return fetchApi<ValidationResult>('/onboarding/validate/rxresume', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function validateResumeJson(): Promise<ValidationResult> {
+  return fetchApi<ValidationResult>('/onboarding/validate/resume');
 }
 
 export async function updateSettings(update: {

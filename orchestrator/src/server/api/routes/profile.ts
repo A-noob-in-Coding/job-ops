@@ -61,7 +61,10 @@ profileRouter.post('/upload', async (req: Request, res: Response) => {
 
     const parsed = resumeDataSchema.safeParse(profile);
     if (!parsed.success) {
-      const details = parsed.error.issues[0]?.message ?? 'Resume JSON does not match the RxResume schema.';
+      const issue = parsed.error.issues[0];
+      const path = issue?.path?.join('.') || '';
+      const baseMessage = issue?.message ?? 'Resume JSON does not match the RxResume schema.';
+      const details = path ? `Field "${path}": ${baseMessage}` : baseMessage;
       throw new Error(`Invalid resume JSON: ${details}`);
     }
 

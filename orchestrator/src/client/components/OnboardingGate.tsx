@@ -13,14 +13,32 @@ import * as api from "@client/api"
 import { useSettings } from "@client/hooks/useSettings"
 import { SettingsInput } from "@client/pages/settings/components/SettingsInput"
 import { formatSecretHint } from "@client/pages/settings/utils"
-import type { ProfileStatusResponse, ResumeProfile } from "@shared/types"
+import type { ResumeProfile, ValidationResult } from "@shared/types"
+
+type ValidationState = ValidationResult & { checked: boolean }
 
 export const OnboardingGate: React.FC = () => {
   const { settings, isLoading: settingsLoading, refreshSettings } = useSettings()
-  const [profileStatus, setProfileStatus] = useState<ProfileStatusResponse | null>(null)
-  const [isCheckingProfile, setIsCheckingProfile] = useState(false)
   const [isSavingEnv, setIsSavingEnv] = useState(false)
   const [isUploadingResume, setIsUploadingResume] = useState(false)
+  const [isValidatingOpenrouter, setIsValidatingOpenrouter] = useState(false)
+  const [isValidatingRxresume, setIsValidatingRxresume] = useState(false)
+  const [isValidatingResume, setIsValidatingResume] = useState(false)
+  const [openrouterValidation, setOpenrouterValidation] = useState<ValidationState>({
+    valid: false,
+    message: null,
+    checked: false,
+  })
+  const [rxresumeValidation, setRxresumeValidation] = useState<ValidationState>({
+    valid: false,
+    message: null,
+    checked: false,
+  })
+  const [resumeValidation, setResumeValidation] = useState<ValidationState>({
+    valid: false,
+    message: null,
+    checked: false,
+  })
   const [currentStep, setCurrentStep] = useState<string | null>(null)
 
   const [openrouterApiKey, setOpenrouterApiKey] = useState("")
@@ -29,31 +47,62 @@ export const OnboardingGate: React.FC = () => {
   const [resumeFile, setResumeFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const refreshProfileStatus = useCallback(async () => {
-    setIsCheckingProfile(true)
+  const validateResume = useCallback(async () => {
+    setIsValidatingResume(true)
     try {
-      const status = await api.getProfileStatus()
-      setProfileStatus(status)
+      const result = await api.validateResumeJson()
+      setResumeValidation({ ...result, checked: true })
+      return result
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to check base resume"
-      setProfileStatus({ exists: false, error: message })
+      const message = error instanceof Error ? error.message : "Resume validation failed"
+      const result = { valid: false, message }
+      setResumeValidation({ ...result, checked: true })
+      return result
     } finally {
-      setIsCheckingProfile(false)
+      setIsValidatingResume(false)
     }
   }, [])
 
-  useEffect(() => {
-    void refreshProfileStatus()
-  }, [refreshProfileStatus])
+  const validateOpenrouter = useCallback(async (apiKey?: string) => {
+    setIsValidatingOpenrouter(true)
+    try {
+      const result = await api.validateOpenrouter(apiKey)
+      setOpenrouterValidation({ ...result, checked: true })
+      return result
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "OpenRouter validation failed"
+      const result = { valid: false, message }
+      setOpenrouterValidation({ ...result, checked: true })
+      return result
+    } finally {
+      setIsValidatingOpenrouter(false)
+    }
+  }, [])
+
+  const validateRxresume = useCallback(async (email?: string, password?: string) => {
+    setIsValidatingRxresume(true)
+    try {
+      const result = await api.validateRxresume(email, password)
+      setRxresumeValidation({ ...result, checked: true })
+      return result
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "RxResume validation failed"
+      const result = { valid: false, message }
+      setRxresumeValidation({ ...result, checked: true })
+      return result
+    } finally {
+      setIsValidatingRxresume(false)
+    }
+  }, [])
 
   const hasOpenrouterKey = Boolean(settings?.openrouterApiKeyHint)
   const hasRxresumeEmail = Boolean(settings?.rxresumeEmail?.trim())
   const hasRxresumePassword = Boolean(settings?.rxresumePasswordHint)
   const hasRxresumeCredentials = hasRxresumeEmail && hasRxresumePassword
-  const hasBaseResume = Boolean(profileStatus?.exists)
+  const hasBaseResume = resumeValidation.valid
 
-  const shouldOpen = Boolean(settings && profileStatus && !settingsLoading && !isCheckingProfile)
-    && !(hasOpenrouterKey && hasRxresumeCredentials && hasBaseResume)
+  const shouldOpen = Boolean(settings && !settingsLoading)
+    && !(openrouterValidation.valid && rxresumeValidation.valid && resumeValidation.valid)
 
   const openrouterCurrent = settings?.openrouterApiKeyHint
     ? formatSecretHint(settings.openrouterApiKeyHint)
@@ -71,22 +120,22 @@ export const OnboardingGate: React.FC = () => {
         id: "openrouter",
         label: "Connect AI",
         subtitle: "OpenRouter key",
-        complete: hasOpenrouterKey,
+        complete: openrouterValidation.valid,
       },
       {
         id: "rxresume",
         label: "PDF Export",
         subtitle: "RxResume login",
-        complete: hasRxresumeCredentials,
+        complete: rxresumeValidation.valid,
       },
       {
         id: "resume",
         label: "Resume JSON",
         subtitle: "Upload your file",
-        complete: hasBaseResume,
+        complete: resumeValidation.valid,
       },
     ],
-    [hasBaseResume, hasOpenrouterKey, hasRxresumeCredentials]
+    [openrouterValidation.valid, resumeValidation.valid, rxresumeValidation.valid]
   )
 
   const defaultStep = steps.find((step) => !step.complete)?.id ?? steps[0]?.id
@@ -98,8 +147,30 @@ export const OnboardingGate: React.FC = () => {
     }
   }, [currentStep, defaultStep, shouldOpen])
 
+  const runAllValidations = useCallback(async () => {
+    if (!settings) return
+    const results = await Promise.allSettled([
+      validateOpenrouter(),
+      validateRxresume(),
+      validateResume(),
+    ])
+
+    const failed = results.find((result) => result.status === "rejected")
+    if (failed) {
+      const reason = failed.status === "rejected" ? failed.reason : null
+      const message = reason instanceof Error ? reason.message : "Validation checks failed"
+      toast.error(message)
+    }
+  }, [settings, validateOpenrouter, validateRxresume, validateResume])
+
+  useEffect(() => {
+    if (!settings || settingsLoading) return
+    if (openrouterValidation.checked || rxresumeValidation.checked || resumeValidation.checked) return
+    void runAllValidations()
+  }, [settings, settingsLoading, openrouterValidation.checked, rxresumeValidation.checked, resumeValidation.checked, runAllValidations])
+
   const handleRefresh = async () => {
-    const results = await Promise.allSettled([refreshSettings(), refreshProfileStatus()])
+    const results = await Promise.allSettled([refreshSettings(), runAllValidations()])
     const failed = results.find((result) => result.status === "rejected")
     if (failed) {
       const reason = failed.status === "rejected" ? failed.reason : null
@@ -110,17 +181,25 @@ export const OnboardingGate: React.FC = () => {
 
   const handleSaveOpenrouter = async (): Promise<boolean> => {
     const openrouterValue = openrouterApiKey.trim()
-    if (hasOpenrouterKey && !openrouterValue) return true
-    if (!openrouterValue) {
+    if (!openrouterValue && !hasOpenrouterKey) {
       toast.info("Add your OpenRouter API key to continue")
       return false
     }
 
     try {
-      setIsSavingEnv(true)
-      await api.updateSettings({ openrouterApiKey: openrouterValue })
-      await refreshSettings()
-      setOpenrouterApiKey("")
+      const validation = await validateOpenrouter(openrouterValue || undefined)
+      if (!validation.valid) {
+        toast.error(validation.message || "OpenRouter validation failed")
+        return false
+      }
+
+      if (openrouterValue) {
+        setIsSavingEnv(true)
+        await api.updateSettings({ openrouterApiKey: openrouterValue })
+        await refreshSettings()
+        setOpenrouterApiKey("")
+      }
+
       toast.success("OpenRouter connected")
       return true
     } catch (error) {
@@ -147,19 +226,24 @@ export const OnboardingGate: React.FC = () => {
       return false
     }
 
-    const update: { rxresumeEmail?: string; rxresumePassword?: string } = {}
-    if (emailValue) update.rxresumeEmail = emailValue
-    if (passwordValue) update.rxresumePassword = passwordValue
-
-    if (Object.keys(update).length === 0) {
-      return true
-    }
-
     try {
-      setIsSavingEnv(true)
-      await api.updateSettings(update)
-      await refreshSettings()
-      setRxresumePassword("")
+      const validation = await validateRxresume(emailValue || undefined, passwordValue || undefined)
+      if (!validation.valid) {
+        toast.error(validation.message || "RxResume validation failed")
+        return false
+      }
+
+      const update: { rxresumeEmail?: string; rxresumePassword?: string } = {}
+      if (emailValue) update.rxresumeEmail = emailValue
+      if (passwordValue) update.rxresumePassword = passwordValue
+
+      if (Object.keys(update).length > 0) {
+        setIsSavingEnv(true)
+        await api.updateSettings(update)
+        await refreshSettings()
+        setRxresumePassword("")
+      }
+
       toast.success("RxResume connected")
       return true
     } catch (error) {
@@ -173,8 +257,13 @@ export const OnboardingGate: React.FC = () => {
 
   const handleUploadResume = async (): Promise<boolean> => {
     if (!resumeFile) {
-      toast.info("Choose your base.json file")
-      return false
+      const validation = await validateResume()
+      if (!validation.valid) {
+        toast.info(validation.message || "Upload your resume JSON to continue")
+        return false
+      }
+
+      return true
     }
 
     try {
@@ -188,7 +277,7 @@ export const OnboardingGate: React.FC = () => {
       }
 
       await api.uploadProfile(parsed)
-      await refreshProfileStatus()
+      await validateResume()
       setResumeFile(null)
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
@@ -209,14 +298,15 @@ export const OnboardingGate: React.FC = () => {
   const stepIndex = resolvedStepIndex >= 0 ? resolvedStepIndex : 0
   const completedSteps = steps.filter((step) => step.complete).length
   const progressValue = steps.length > 0 ? Math.round((completedSteps / steps.length) * 100) : 0
-  const isBusy = isSavingEnv || isUploadingResume || settingsLoading || isCheckingProfile
+  const isBusy = isSavingEnv || isUploadingResume || settingsLoading || isValidatingOpenrouter || isValidatingRxresume || isValidatingResume
   const canGoBack = stepIndex > 0
-  const canGoForward = stepIndex < steps.length - 1
   const primaryLabel = currentStep === "resume"
-    ? (hasBaseResume ? "Finish" : "Upload and finish")
-    : (currentStep === "openrouter" && !hasOpenrouterKey) || (currentStep === "rxresume" && !hasRxresumeCredentials)
-      ? "Save"
-      : "Continue"
+    ? (resumeValidation.valid ? "Finish" : "Upload and validate")
+    : currentStep === "openrouter"
+      ? (openrouterValidation.valid ? "Revalidate" : "Validate")
+      : currentStep === "rxresume"
+        ? (rxresumeValidation.valid ? "Revalidate" : "Validate")
+        : "Validate"
 
   const handlePrimaryAction = async () => {
     if (!currentStep) return

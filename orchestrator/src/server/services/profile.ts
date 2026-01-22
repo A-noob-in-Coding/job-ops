@@ -9,7 +9,7 @@ let cachedProfile: any = null;
 let cachedProfilePath: string | null = null;
 
 /**
- * Get the base resume profile from base.json.
+ * Get the base resume profile from resume.json.
  * Caches the result since it doesn't change often.
  * @param profilePath Optional absolute path to profile JSON. Defaults to base.json.
  * @param forceRefresh Force reload from disk.

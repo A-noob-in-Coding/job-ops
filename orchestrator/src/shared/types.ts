@@ -336,6 +336,11 @@ export interface ProfileStatusResponse {
   error: string | null;
 }
 
+export interface ValidationResult {
+  valid: boolean;
+  message: string | null;
+}
+
 export interface AppSettings {
   model: string;
   defaultModel: string;
