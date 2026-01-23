@@ -49,7 +49,6 @@ COPY orchestrator ./orchestrator
 COPY extractors/gradcracker ./extractors/gradcracker
 COPY extractors/jobspy ./extractors/jobspy
 COPY extractors/ukvisajobs ./extractors/ukvisajobs
-COPY resume-generator ./resume-generator
 
 # Build the orchestrator (client + server)
 WORKDIR /app/orchestrator
@@ -66,7 +65,6 @@ ENV NODE_ENV=production
 ENV PORT=3001
 ENV PYTHON_PATH=/usr/bin/python3
 ENV DATA_DIR=/app/data
-ENV RESUME_GEN_DIR=/app/resume-generator
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
