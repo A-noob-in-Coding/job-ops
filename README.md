@@ -94,6 +94,10 @@ Dev URLs:
 
 Note on Analytics: The current alpha version includes anonymous analytics (Umami) to help me debug performance. This will be made opt-in only in the upcoming updates. If you want to disable it now, block umami.dakheera47.com in your firewall.
 
+# Contact
+
+If you need any help with any step of the process, feel free to open an [issue](https://github.com/DaKheera47/job-ops/issues). I am actively monitoring this section and I would be extremely happy to help you get up and running!
+
 [![Star History Chart](https://app.repohistory.com/api/svg?repo=DaKheera47/job-ops&type=Date&background=0D1117&color=b562f8)](https://app.repohistory.com/star-history)
 
 ## License
