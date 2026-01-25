@@ -7,6 +7,7 @@ import { DecideMode } from "./DecideMode";
 import { EmptyState } from "./EmptyState";
 import { ProcessingState } from "./ProcessingState";
 import { TailorMode } from "./TailorMode";
+import { useRescoreJob } from "../../hooks/useRescoreJob";
 
 type PanelMode = "decide" | "tailor";
 
@@ -24,13 +25,12 @@ export const DiscoveredPanel: React.FC<DiscoveredPanelProps> = ({
   const [mode, setMode] = useState<PanelMode>("decide");
   const [isSkipping, setIsSkipping] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
-  const [isRescoring, setIsRescoring] = useState(false);
+  const { isRescoring, rescoreJob } = useRescoreJob(onJobUpdated);
 
   useEffect(() => {
     setMode("decide");
     setIsSkipping(false);
     setIsFinalizing(false);
-    setIsRescoring(false);
   }, [job?.id]);
 
   const handleSkip = async () => {
@@ -71,21 +71,7 @@ export const DiscoveredPanel: React.FC<DiscoveredPanelProps> = ({
     }
   };
 
-  const handleRescore = async () => {
-    if (!job) return;
-    try {
-      setIsRescoring(true);
-      await api.rescoreJob(job.id);
-      toast.success("Match recalculated");
-      await onJobUpdated();
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to recalculate match";
-      toast.error(message);
-    } finally {
-      setIsRescoring(false);
-    }
-  };
+  const handleRescore = () => rescoreJob(job?.id);
 
   if (!job) {
     return <EmptyState />;

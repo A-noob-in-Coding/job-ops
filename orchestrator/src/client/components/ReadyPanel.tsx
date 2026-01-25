@@ -46,6 +46,7 @@ import * as api from "../api";
 import { FitAssessment, JobHeader, TailoredSummary } from ".";
 import { TailorMode } from "./discovered-panel/TailorMode";
 import { useProfile } from "../hooks/useProfile";
+import { useRescoreJob } from "../hooks/useRescoreJob";
 import type { Job, ResumeProjectCatalogItem } from "../../shared/types";
 
 type PanelMode = "ready" | "tailor";
@@ -67,7 +68,7 @@ export const ReadyPanel: React.FC<ReadyPanelProps> = ({
   const [mode, setMode] = useState<PanelMode>("ready");
   const [isMarkingApplied, setIsMarkingApplied] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
-  const [isRescoring, setIsRescoring] = useState(false);
+  const { isRescoring, rescoreJob } = useRescoreJob(onJobUpdated);
   const [catalog, setCatalog] = useState<ResumeProjectCatalogItem[]>([]);
   const [recentlyApplied, setRecentlyApplied] = useState<{
     jobId: string;
@@ -182,21 +183,7 @@ export const ReadyPanel: React.FC<ReadyPanelProps> = ({
     }
   }, [job, onJobUpdated]);
 
-  const handleRescore = useCallback(async () => {
-    if (!job) return;
-
-    try {
-      setIsRescoring(true);
-      await api.rescoreJob(job.id);
-      toast.success("Match recalculated");
-      await onJobUpdated();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to recalculate match";
-      toast.error(message);
-    } finally {
-      setIsRescoring(false);
-    }
-  }, [job, onJobUpdated]);
+  const handleRescore = useCallback(() => rescoreJob(job?.id), [job?.id, rescoreJob]);
 
   const handleSkip = useCallback(async () => {
     if (!job) return;
