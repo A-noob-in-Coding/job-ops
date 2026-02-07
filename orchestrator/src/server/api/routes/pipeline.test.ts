@@ -1,5 +1,5 @@
 import type { Server } from "node:http";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startServer, stopServer } from "./test-utils";
 
 describe.sequential("Pipeline API routes", () => {
@@ -46,6 +46,38 @@ describe.sequential("Pipeline API routes", () => {
     });
   });
 
+  it("returns conflict when cancelling with no active pipeline", async () => {
+    const res = await fetch(`${baseUrl}/api/pipeline/cancel`, {
+      method: "POST",
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe("CONFLICT");
+    expect(typeof body.meta.requestId).toBe("string");
+  });
+
+  it("accepts cancellation when pipeline is running", async () => {
+    const { requestPipelineCancel } = await import("../../pipeline/index");
+    vi.mocked(requestPipelineCancel).mockReturnValue({
+      accepted: true,
+      pipelineRunId: "run-1",
+      alreadyRequested: false,
+    });
+
+    const res = await fetch(`${baseUrl}/api/pipeline/cancel`, {
+      method: "POST",
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.data.pipelineRunId).toBe("run-1");
+    expect(body.data.alreadyRequested).toBe(false);
+    expect(typeof body.meta.requestId).toBe("string");
+  });
+
   it("streams pipeline progress over SSE", async () => {
     const controller = new AbortController();
     const res = await fetch(`${baseUrl}/api/pipeline/progress`, {
@@ -61,6 +93,8 @@ describe.sequential("Pipeline API routes", () => {
         const { value } = await reader.read();
         const text = new TextDecoder().decode(value);
         expect(text).toContain("data:");
+        expect(text).toContain('"crawlingSource"');
+        expect(text).toContain('"crawlingSourcesTotal"');
       } finally {
         await reader.cancel();
         controller.abort();

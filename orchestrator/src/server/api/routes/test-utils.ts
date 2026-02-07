@@ -8,6 +8,11 @@ vi.mock("../../pipeline/index", () => {
   const progress = {
     step: "idle",
     message: "Ready",
+    crawlingSource: null,
+    crawlingSourcesCompleted: 0,
+    crawlingSourcesTotal: 0,
+    crawlingTermsProcessed: 0,
+    crawlingTermsTotal: 0,
     crawlingListPagesProcessed: 0,
     crawlingListPagesTotal: 0,
     crawlingJobCardsFound: 0,
@@ -30,6 +35,12 @@ vi.mock("../../pipeline/index", () => {
     summarizeJob: vi.fn().mockResolvedValue({ success: true }),
     generateFinalPdf: vi.fn().mockResolvedValue({ success: true }),
     getPipelineStatus: vi.fn(() => ({ isRunning: false })),
+    requestPipelineCancel: vi.fn(() => ({
+      accepted: false,
+      pipelineRunId: null,
+      alreadyRequested: false,
+    })),
+    isPipelineCancelRequested: vi.fn(() => false),
     subscribeToProgress: vi.fn((listener: (data: unknown) => void) => {
       listener(progress);
       return () => {};

@@ -20,9 +20,15 @@ interface PipelineProgress {
     | "scoring"
     | "processing"
     | "completed"
+    | "cancelled"
     | "failed";
   message: string;
   detail?: string;
+  crawlingSource: "gradcracker" | "jobspy" | "ukvisajobs" | null;
+  crawlingSourcesCompleted: number;
+  crawlingSourcesTotal: number;
+  crawlingTermsProcessed: number;
+  crawlingTermsTotal: number;
   crawlingListPagesProcessed: number;
   crawlingListPagesTotal: number;
   crawlingJobCardsFound: number;
@@ -56,6 +62,7 @@ const stepLabels: Record<PipelineProgress["step"], string> = {
   scoring: "Scoring",
   processing: "Processing",
   completed: "Complete",
+  cancelled: "Cancelled",
   failed: "Failed",
 };
 
@@ -66,7 +73,17 @@ const stepBadgeClasses: Record<PipelineProgress["step"], string> = {
   scoring: "bg-amber-500/10 text-amber-400 border-amber-500/20",
   processing: "bg-primary/10 text-primary border-primary/20",
   completed: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  cancelled: "bg-muted text-muted-foreground border-border",
   failed: "bg-destructive/10 text-destructive border-destructive/20",
+};
+
+const sourceLabel: Record<
+  Exclude<PipelineProgress["crawlingSource"], null>,
+  string
+> = {
+  gradcracker: "Gradcracker",
+  jobspy: "JobSpy",
+  ukvisajobs: "UKVisaJobs",
 };
 
 const clamp = (value: number, min: number, max: number) =>
@@ -83,6 +100,15 @@ export const PipelineProgress: React.FC<PipelineProgressProps> = ({
 
     switch (progress.step) {
       case "crawling": {
+        if (progress.crawlingTermsTotal > 0) {
+          return clamp(
+            5 +
+              (progress.crawlingTermsProcessed / progress.crawlingTermsTotal) *
+                10,
+            5,
+            15,
+          );
+        }
         if (progress.crawlingListPagesTotal > 0) {
           return clamp(
             (progress.crawlingListPagesProcessed /
@@ -119,6 +145,7 @@ export const PipelineProgress: React.FC<PipelineProgressProps> = ({
         return 55;
       }
       case "completed":
+      case "cancelled":
       case "failed":
         return 100;
       default:
@@ -162,11 +189,31 @@ export const PipelineProgress: React.FC<PipelineProgressProps> = ({
   }
 
   const step = progress?.step ?? "idle";
-  const isActive = step !== "idle" && step !== "completed" && step !== "failed";
+  const isActive =
+    step !== "idle" &&
+    step !== "completed" &&
+    step !== "cancelled" &&
+    step !== "failed";
+  const listPagesText = progress
+    ? progress.crawlingListPagesTotal > 0
+      ? `${progress.crawlingListPagesProcessed}/${progress.crawlingListPagesTotal}`
+      : progress.crawlingListPagesProcessed > 0
+        ? `${progress.crawlingListPagesProcessed}`
+        : "—"
+    : "—";
+  const jobPagesText = progress
+    ? progress.crawlingJobPagesEnqueued > 0
+      ? `${progress.crawlingJobPagesProcessed}/${progress.crawlingJobPagesEnqueued}`
+      : progress.crawlingJobPagesProcessed > 0
+        ? `${progress.crawlingJobPagesProcessed}`
+        : "—"
+    : "—";
 
   const showStats =
     !!progress &&
-    ["crawling", "scoring", "processing", "completed"].includes(step);
+    ["crawling", "scoring", "processing", "completed", "cancelled"].includes(
+      step,
+    );
 
   return (
     <Card>
@@ -201,6 +248,23 @@ export const PipelineProgress: React.FC<PipelineProgressProps> = ({
             {progress.detail && (
               <p className="text-sm text-muted-foreground">{progress.detail}</p>
             )}
+            {step === "crawling" && (
+              <p className="text-xs text-muted-foreground">
+                Source:{" "}
+                {progress.crawlingSource
+                  ? sourceLabel[progress.crawlingSource]
+                  : "starting"}
+                {"  "}({progress.crawlingSourcesCompleted}/
+                {Math.max(progress.crawlingSourcesTotal, 0)})
+                {progress.crawlingTermsTotal > 0 && (
+                  <>
+                    {"  "}
+                    Terms: {progress.crawlingTermsProcessed}/
+                    {progress.crawlingTermsTotal}
+                  </>
+                )}
+              </p>
+            )}
           </div>
 
           {showStats && (
@@ -211,21 +275,15 @@ export const PipelineProgress: React.FC<PipelineProgressProps> = ({
                   <>
                     <div>
                       <div className="text-xs text-muted-foreground">
-                        Sources
+                        List pages
                       </div>
-                      <div className="tabular-nums">
-                        {progress.crawlingListPagesProcessed}
-                        {progress.crawlingListPagesTotal > 0
-                          ? `/${progress.crawlingListPagesTotal}`
-                          : ""}
-                      </div>
+                      <div className="tabular-nums">{listPagesText}</div>
                     </div>
                     <div>
-                      <div className="text-xs text-muted-foreground">Pages</div>
-                      <div className="tabular-nums">
-                        {progress.crawlingJobPagesProcessed}/
-                        {Math.max(progress.crawlingJobPagesEnqueued, 0)}
+                      <div className="text-xs text-muted-foreground">
+                        Job pages
                       </div>
+                      <div className="tabular-nums">{jobPagesText}</div>
                     </div>
                     <div>
                       <div className="text-xs text-muted-foreground">
