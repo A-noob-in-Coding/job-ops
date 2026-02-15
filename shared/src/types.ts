@@ -6,7 +6,8 @@ export type JobStatus =
   | "discovered" // Crawled but not processed
   | "processing" // Currently generating resume
   | "ready" // PDF generated, waiting for user to apply
-  | "applied" // User marked as applied
+  | "applied" // Application sent
+  | "in_progress" // In process beyond initial application
   | "skipped" // User skipped this job
   | "expired"; // Deadline passed
 
@@ -27,7 +28,7 @@ export const STAGE_LABELS: Record<ApplicationStage, string> = {
   applied: "Applied",
   recruiter_screen: "Recruiter Screen",
   assessment: "Assessment",
-  hiring_manager_screen: "Hiring Manager Screen",
+  hiring_manager_screen: "Team Match",
   technical_interview: "Technical Interview",
   onsite: "Final Round",
   offer: "Offer",
@@ -210,6 +211,8 @@ export type JobListItem = Pick<
   | "salary"
   | "location"
   | "status"
+  | "outcome"
+  | "closedAt"
   | "suitabilityScore"
   | "sponsorMatchScore"
   | "jobType"

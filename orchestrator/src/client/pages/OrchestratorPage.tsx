@@ -83,11 +83,15 @@ export const OrchestratorPage: React.FC = () => {
 
   // Effect to sync URL if it was invalid
   useEffect(() => {
+    if (tab === "in_progress") {
+      navigate("/applications/in-progress", { replace: true });
+      return;
+    }
     const validTabs: FilterTab[] = ["ready", "discovered", "applied", "all"];
     if (tab && !validTabs.includes(tab as FilterTab)) {
       navigateWithContext("ready", null, true);
     }
-  }, [tab, navigateWithContext]);
+  }, [tab, navigate, navigateWithContext]);
 
   const [navOpen, setNavOpen] = useState(false);
   const [isRunModeModalOpen, setIsRunModeModalOpen] = useState(false);

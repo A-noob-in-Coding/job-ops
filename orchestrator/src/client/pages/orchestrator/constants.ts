@@ -41,6 +41,11 @@ export const statusTokens: Record<
     badge: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
     dot: "bg-emerald-400",
   },
+  in_progress: {
+    label: "In Progress",
+    badge: "border-cyan-500/30 bg-cyan-500/10 text-cyan-200",
+    dot: "bg-cyan-400",
+  },
   skipped: {
     label: "Skipped",
     badge: "border-rose-500/30 bg-rose-500/10 text-rose-200",

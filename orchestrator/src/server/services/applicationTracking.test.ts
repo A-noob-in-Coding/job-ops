@@ -66,13 +66,13 @@ describe.sequential("Application Tracking Service", () => {
     expect(event2.fromStage).toBe("applied");
     expect(event2.toStage).toBe("recruiter_screen");
 
-    // Check Job Status (still applied for recruiter screen)
+    // Check Job Status (moves to in_progress beyond applied stage)
     const jobAfter2 = await db
       .select()
       .from(schema.jobs)
       .where(eq(schema.jobs.id, job.id))
       .get();
-    expect(jobAfter2?.status).toBe("applied");
+    expect(jobAfter2?.status).toBe("in_progress");
   });
 
   it("updates stage event and reflects in job status if latest", async () => {
@@ -105,7 +105,7 @@ describe.sequential("Application Tracking Service", () => {
       .from(schema.jobs)
       .where(eq(schema.jobs.id, job.id))
       .get();
-    expect(jobUpdated?.status).toBe("applied"); // 'offer' maps to 'applied' in status (active)
+    expect(jobUpdated?.status).toBe("in_progress");
     expect(jobUpdated?.outcome).toBe("offer_accepted");
   });
 
@@ -135,7 +135,7 @@ describe.sequential("Application Tracking Service", () => {
       .from(schema.jobs)
       .where(eq(schema.jobs.id, job.id))
       .get();
-    expect(jobCheck?.status).toBe("applied");
+    expect(jobCheck?.status).toBe("in_progress");
     expect(jobCheck?.outcome).toBe("rejected");
 
     // Delete event2
@@ -233,6 +233,28 @@ describe.sequential("Application Tracking Service", () => {
       .get();
     expect(jobCheck?.outcome).toBeNull();
     expect(jobCheck?.closedAt).toBeNull();
+  });
+
+  it("sets closedAt when a closed stage event is logged without outcome", async () => {
+    const job = await jobsRepo.createJob({
+      source: "manual",
+      title: "Platform Engineer",
+      employer: "Infra Co",
+      jobUrl: "https://example.com/job/7",
+    });
+
+    const now = Math.floor(Date.now() / 1000);
+    applicationTracking.transitionStage(job.id, "applied", now - 100);
+    applicationTracking.transitionStage(job.id, "closed", now);
+
+    const jobCheck = await db
+      .select()
+      .from(schema.jobs)
+      .where(eq(schema.jobs.id, job.id))
+      .get();
+    expect(jobCheck?.status).toBe("in_progress");
+    expect(jobCheck?.outcome).toBeNull();
+    expect(jobCheck?.closedAt).toBe(now);
   });
 
   it("preserves explicit outcome when updating metadata", async () => {

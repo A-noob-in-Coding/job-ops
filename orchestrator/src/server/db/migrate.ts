@@ -61,7 +61,7 @@ const migrations = [
     degree_required TEXT,
     starting TEXT,
     job_description TEXT,
-    status TEXT NOT NULL DEFAULT 'discovered' CHECK(status IN ('discovered', 'processing', 'ready', 'applied', 'skipped', 'expired')),
+    status TEXT NOT NULL DEFAULT 'discovered' CHECK(status IN ('discovered', 'processing', 'ready', 'applied', 'in_progress', 'skipped', 'expired')),
     outcome TEXT,
     closed_at INTEGER,
     suitability_score REAL,
@@ -285,6 +285,10 @@ const migrations = [
   `DROP TABLE IF EXISTS post_application_message_candidates`,
   `DROP TABLE IF EXISTS post_application_message_links`,
 
+  // Protect child tables (stage_events/tasks/interviews) during parent table rebuilds.
+  // Without this, dropping/replacing `jobs` can cascade-delete historical stage data.
+  `PRAGMA foreign_keys = OFF`,
+
   // Ensure pipeline_runs status supports "cancelled" for existing databases.
   `CREATE TABLE IF NOT EXISTS pipeline_runs_new (
     id TEXT PRIMARY KEY,
@@ -300,6 +304,93 @@ const migrations = [
    FROM pipeline_runs`,
   `DROP TABLE IF EXISTS pipeline_runs`,
   `ALTER TABLE pipeline_runs_new RENAME TO pipeline_runs`,
+
+  // Ensure jobs status supports "in_progress" for existing databases.
+  `CREATE TABLE IF NOT EXISTS jobs_new (
+    id TEXT PRIMARY KEY,
+    source TEXT NOT NULL DEFAULT 'gradcracker',
+    source_job_id TEXT,
+    job_url_direct TEXT,
+    date_posted TEXT,
+    job_type TEXT,
+    salary_source TEXT,
+    salary_interval TEXT,
+    salary_min_amount REAL,
+    salary_max_amount REAL,
+    salary_currency TEXT,
+    is_remote INTEGER,
+    job_level TEXT,
+    job_function TEXT,
+    listing_type TEXT,
+    emails TEXT,
+    company_industry TEXT,
+    company_logo TEXT,
+    company_url_direct TEXT,
+    company_addresses TEXT,
+    company_num_employees TEXT,
+    company_revenue TEXT,
+    company_description TEXT,
+    skills TEXT,
+    experience_range TEXT,
+    company_rating REAL,
+    company_reviews_count INTEGER,
+    vacancy_count INTEGER,
+    work_from_home_type TEXT,
+    title TEXT NOT NULL,
+    employer TEXT NOT NULL,
+    employer_url TEXT,
+    job_url TEXT NOT NULL UNIQUE,
+    application_link TEXT,
+    disciplines TEXT,
+    deadline TEXT,
+    salary TEXT,
+    location TEXT,
+    degree_required TEXT,
+    starting TEXT,
+    job_description TEXT,
+    status TEXT NOT NULL DEFAULT 'discovered' CHECK(status IN ('discovered', 'processing', 'ready', 'applied', 'in_progress', 'skipped', 'expired')),
+    outcome TEXT,
+    closed_at INTEGER,
+    suitability_score REAL,
+    suitability_reason TEXT,
+    tailored_summary TEXT,
+    tailored_headline TEXT,
+    tailored_skills TEXT,
+    selected_project_ids TEXT,
+    pdf_path TEXT,
+    sponsor_match_score REAL,
+    sponsor_match_names TEXT,
+    discovered_at TEXT NOT NULL DEFAULT (datetime('now')),
+    processed_at TEXT,
+    applied_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`,
+  `INSERT OR REPLACE INTO jobs_new (
+    id, source, source_job_id, job_url_direct, date_posted, job_type, salary_source, salary_interval,
+    salary_min_amount, salary_max_amount, salary_currency, is_remote, job_level, job_function, listing_type,
+    emails, company_industry, company_logo, company_url_direct, company_addresses, company_num_employees,
+    company_revenue, company_description, skills, experience_range, company_rating, company_reviews_count,
+    vacancy_count, work_from_home_type, title, employer, employer_url, job_url, application_link, disciplines,
+    deadline, salary, location, degree_required, starting, job_description, status, outcome, closed_at,
+    suitability_score, suitability_reason, tailored_summary, tailored_headline, tailored_skills,
+    selected_project_ids, pdf_path, sponsor_match_score, sponsor_match_names, discovered_at, processed_at,
+    applied_at, created_at, updated_at
+  )
+  SELECT
+    id, source, source_job_id, job_url_direct, date_posted, job_type, salary_source, salary_interval,
+    salary_min_amount, salary_max_amount, salary_currency, is_remote, job_level, job_function, listing_type,
+    emails, company_industry, company_logo, company_url_direct, company_addresses, company_num_employees,
+    company_revenue, company_description, skills, experience_range, company_rating, company_reviews_count,
+    vacancy_count, work_from_home_type, title, employer, employer_url, job_url, application_link, disciplines,
+    deadline, salary, location, degree_required, starting, job_description, status, outcome, closed_at,
+    suitability_score, suitability_reason, tailored_summary, tailored_headline, tailored_skills,
+    selected_project_ids, pdf_path, sponsor_match_score, sponsor_match_names, discovered_at, processed_at,
+    applied_at, created_at, updated_at
+  FROM jobs`,
+  `DROP TABLE IF EXISTS jobs`,
+  `ALTER TABLE jobs_new RENAME TO jobs`,
+  `PRAGMA foreign_keys = ON`,
 
   `CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)`,
   `CREATE INDEX IF NOT EXISTS idx_jobs_discovered_at ON jobs(discovered_at)`,
@@ -326,6 +417,83 @@ const migrations = [
    FROM jobs
    WHERE applied_at IS NOT NULL
      AND id NOT IN (SELECT application_id FROM stage_events WHERE to_stage = 'applied')`,
+
+  // Backfill: Create "Closed" events for legacy jobs already closed via outcome.
+  `INSERT INTO stage_events (id, application_id, title, from_stage, to_stage, occurred_at, metadata, outcome)
+   SELECT
+     'backfill-closed-' || jobs.id,
+     jobs.id,
+     'Closed',
+     (
+       SELECT se.to_stage
+       FROM stage_events se
+       WHERE se.application_id = jobs.id
+       ORDER BY se.occurred_at DESC, se.id DESC
+       LIMIT 1
+     ),
+     'closed',
+     COALESCE(
+       jobs.closed_at,
+       CAST(strftime('%s', jobs.applied_at) AS INTEGER),
+       CAST(strftime('%s', jobs.updated_at) AS INTEGER),
+       CAST(strftime('%s', jobs.discovered_at) AS INTEGER),
+       CAST(strftime('%s', 'now') AS INTEGER)
+     ),
+     '{"eventLabel":"Closed","actor":"system"}',
+     jobs.outcome
+   FROM jobs
+   WHERE jobs.outcome IS NOT NULL
+     AND jobs.id NOT IN (SELECT application_id FROM stage_events WHERE to_stage = 'closed')`,
+
+  // Backfill: Sync legacy workflow status from latest stage event.
+  `UPDATE jobs
+   SET
+     status = 'in_progress',
+     updated_at = datetime('now')
+   WHERE status = 'applied'
+     AND COALESCE((
+       SELECT se.to_stage
+       FROM stage_events se
+       WHERE se.application_id = jobs.id
+       ORDER BY se.occurred_at DESC, se.id DESC
+       LIMIT 1
+     ), 'applied') IN (
+       'recruiter_screen',
+       'assessment',
+       'hiring_manager_screen',
+       'technical_interview',
+       'onsite',
+       'offer',
+       'closed'
+     )`,
+
+  // Backfill: Mark closed applications from latest stage event.
+  `UPDATE jobs
+   SET
+     status = 'in_progress',
+     closed_at = (
+       SELECT se.occurred_at
+       FROM stage_events se
+       WHERE se.application_id = jobs.id
+       ORDER BY se.occurred_at DESC, se.id DESC
+       LIMIT 1
+     ),
+     outcome = COALESCE((
+       SELECT se.outcome
+       FROM stage_events se
+       WHERE se.application_id = jobs.id
+       ORDER BY se.occurred_at DESC, se.id DESC
+       LIMIT 1
+     ), outcome),
+     updated_at = datetime('now')
+   WHERE status IN ('applied', 'in_progress')
+     AND COALESCE((
+       SELECT se.to_stage
+       FROM stage_events se
+       WHERE se.application_id = jobs.id
+       ORDER BY se.occurred_at DESC, se.id DESC
+       LIMIT 1
+     ), 'applied') = 'closed'`,
 ];
 
 console.log("🔧 Running database migrations...");

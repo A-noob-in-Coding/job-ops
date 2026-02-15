@@ -17,13 +17,13 @@ const { jobs, stageEvents, tasks } = schema;
 
 const STAGE_TO_STATUS: Record<ApplicationStage, JobStatus> = {
   applied: "applied",
-  recruiter_screen: "applied",
-  assessment: "applied",
-  hiring_manager_screen: "applied",
-  technical_interview: "applied",
-  onsite: "applied",
-  offer: "applied",
-  closed: "applied",
+  recruiter_screen: "in_progress",
+  assessment: "in_progress",
+  hiring_manager_screen: "in_progress",
+  technical_interview: "in_progress",
+  onsite: "in_progress",
+  offer: "in_progress",
+  closed: "in_progress",
 };
 
 export const stageEventMetadataSchema = z
@@ -151,6 +151,10 @@ export function transitionStage(
       if (finalToStage === "applied" && !job.appliedAt) {
         updates.appliedAt = new Date().toISOString();
       }
+
+      if (finalToStage === "closed") {
+        updates.closedAt = timestamp;
+      }
     }
 
     if (outcome) {
@@ -242,13 +246,14 @@ export function updateStageEvent(
         storedOutcome ??
         inferredOutcome ??
         (closingStage ? ((job.outcome as JobOutcome | null) ?? null) : null);
-      const closedAt = outcome
-        ? storedOutcome || inferredOutcome
+      const closedAt =
+        lastStage === "closed"
           ? lastEvent.occurredAt
-          : (job.closedAt ?? null)
-        : closingStage
-          ? (job.closedAt ?? null)
-          : null;
+          : outcome
+            ? storedOutcome || inferredOutcome
+              ? lastEvent.occurredAt
+              : (job.closedAt ?? null)
+            : null;
 
       tx.update(jobs)
         .set({
@@ -300,13 +305,14 @@ export function deleteStageEvent(eventId: string): void {
         storedOutcome ??
         inferredOutcome ??
         (closingStage ? ((job.outcome as JobOutcome | null) ?? null) : null);
-      const closedAt = outcome
-        ? storedOutcome || inferredOutcome
+      const closedAt =
+        lastStage === "closed"
           ? lastEvent.occurredAt
-          : (job.closedAt ?? null)
-        : closingStage
-          ? (job.closedAt ?? null)
-          : null;
+          : outcome
+            ? storedOutcome || inferredOutcome
+              ? lastEvent.occurredAt
+              : (job.closedAt ?? null)
+            : null;
 
       tx.update(jobs)
         .set({
