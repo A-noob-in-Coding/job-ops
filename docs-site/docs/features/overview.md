@@ -9,11 +9,19 @@ sidebar_position: 1
 
 The Overview page is the analytics dashboard for your pipeline outcomes.
 
+![Overview dashboard](/img/features/overview-dashboard.png)
+
 It visualizes:
 
 - Applications per day
 - Application-to-response conversion
 - Funnel progression (Applied, Screening, Interview, Offer, Rejected)
+
+### Graph-level views
+
+![Applications per day graph](/img/features/overview-applications-graph.png)
+
+![Funnel progression graph](/img/features/overview-funnel-graph.png)
 
 ## Why it exists
 
