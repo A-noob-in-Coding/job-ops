@@ -3,6 +3,7 @@ import type { Job } from "@shared/types.js";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../api";
+import { useProfile } from "../hooks/useProfile";
 import { _resetTracerReadinessCache } from "../hooks/useTracerReadiness";
 import { TailoringEditor } from "./TailoringEditor";
 
@@ -12,6 +13,10 @@ vi.mock("../api", () => ({
   summarizeJob: vi.fn(),
   generateJobPdf: vi.fn(),
   getTracerReadiness: vi.fn(),
+}));
+
+vi.mock("../hooks/useProfile", () => ({
+  useProfile: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -53,6 +58,32 @@ describe("TailoringEditor", () => {
       checkedAt: Date.now(),
       lastSuccessAt: Date.now(),
       reason: null,
+    });
+    vi.mocked(useProfile).mockReturnValue({
+      profile: {
+        basics: {
+          summary: "Original base summary",
+          label: "Original base headline",
+        },
+        sections: {
+          skills: {
+            items: [
+              {
+                id: "s1",
+                name: "Backend",
+                description: "",
+                level: 0,
+                keywords: ["Node.js", "TypeScript"],
+                visible: true,
+              },
+            ],
+          },
+        },
+      },
+      error: null,
+      isLoading: false,
+      personName: "Resume",
+      refreshProfile: vi.fn(),
     });
   });
 
@@ -276,5 +307,94 @@ describe("TailoringEditor", () => {
         }),
       ),
     );
+  });
+
+  it("supports undo to template and redo to AI draft", async () => {
+    render(<TailoringEditor job={createJob()} onUpdate={vi.fn()} />);
+    await waitFor(() =>
+      expect(api.getResumeProjectsCatalog).toHaveBeenCalled(),
+    );
+
+    ensureAccordionOpen("Summary");
+    fireEvent.click(screen.getAllByLabelText("Undo to template")[0]);
+    expect(screen.getByLabelText("Tailored Summary")).toHaveValue(
+      "Original base summary",
+    );
+    fireEvent.click(screen.getAllByLabelText("Redo to AI draft")[0]);
+    expect(screen.getByLabelText("Tailored Summary")).toHaveValue(
+      "Saved summary",
+    );
+
+    ensureAccordionOpen("Headline");
+    fireEvent.click(screen.getAllByLabelText("Undo to template")[1]);
+    expect(screen.getByLabelText("Tailored Headline")).toHaveValue(
+      "Original base headline",
+    );
+    fireEvent.click(screen.getAllByLabelText("Redo to AI draft")[1]);
+    expect(screen.getByLabelText("Tailored Headline")).toHaveValue(
+      "Saved headline",
+    );
+
+    ensureAccordionOpen("Tailored Skills");
+    fireEvent.click(screen.getAllByLabelText("Undo to template")[2]);
+    ensureAccordionOpen("Backend");
+    expect(screen.getByDisplayValue("Node.js, TypeScript")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByLabelText("Redo to AI draft")[2]);
+    ensureAccordionOpen("Core");
+    expect(screen.getByDisplayValue("React, TypeScript")).toBeInTheDocument();
+  });
+
+  it("resets redo baseline when switching jobs", async () => {
+    const { rerender } = render(
+      <TailoringEditor job={createJob()} onUpdate={vi.fn()} />,
+    );
+    await waitFor(() =>
+      expect(api.getResumeProjectsCatalog).toHaveBeenCalled(),
+    );
+
+    ensureAccordionOpen("Summary");
+    fireEvent.click(screen.getAllByLabelText("Undo to template")[0]);
+    expect(screen.getByLabelText("Tailored Summary")).toHaveValue(
+      "Original base summary",
+    );
+
+    rerender(
+      <TailoringEditor
+        job={createJob({
+          id: "job-2",
+          tailoredSummary: "Second job summary",
+        })}
+        onUpdate={vi.fn()}
+      />,
+    );
+
+    ensureAccordionOpen("Summary");
+    fireEvent.click(screen.getAllByLabelText("Undo to template")[0]);
+    fireEvent.click(screen.getAllByLabelText("Redo to AI draft")[0]);
+    expect(screen.getByLabelText("Tailored Summary")).toHaveValue(
+      "Second job summary",
+    );
+  });
+
+  it("keeps undo disabled until profile template is loaded", async () => {
+    vi.mocked(useProfile).mockReturnValue({
+      profile: null,
+      error: null,
+      isLoading: true,
+      personName: "Resume",
+      refreshProfile: vi.fn(),
+    });
+
+    render(<TailoringEditor job={createJob()} onUpdate={vi.fn()} />);
+    await waitFor(() =>
+      expect(api.getResumeProjectsCatalog).toHaveBeenCalled(),
+    );
+    ensureAccordionOpen("Summary");
+    ensureAccordionOpen("Headline");
+    ensureAccordionOpen("Tailored Skills");
+
+    for (const button of screen.getAllByLabelText("Undo to template")) {
+      expect(button).toBeDisabled();
+    }
   });
 });
