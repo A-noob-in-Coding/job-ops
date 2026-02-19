@@ -1,5 +1,6 @@
 import * as api from "@client/api";
 import { PageHeader } from "@client/components/layout";
+import { useUpdateSettingsMutation } from "@client/hooks/queries/useSettingsMutation";
 import { useTracerReadiness } from "@client/hooks/useTracerReadiness";
 import { BackupSettingsSection } from "@client/pages/settings/components/BackupSettingsSection";
 import { ChatSettingsSection } from "@client/pages/settings/components/ChatSettingsSection";
@@ -23,16 +24,18 @@ import {
 } from "@shared/settings-schema.js";
 import type {
   AppSettings,
-  BackupInfo,
   JobStatus,
   ResumeProjectCatalogItem,
   ResumeProjectsSettings,
 } from "@shared/types.js";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Settings } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { FormProvider, type Resolver, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { useQueryErrorToast } from "@/client/hooks/useQueryErrorToast";
+import { queryKeys } from "@/client/lib/queryKeys";
 import { Accordion } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 
@@ -293,9 +296,9 @@ const getDerivedSettings = (settings: AppSettings | null) => {
 };
 
 export const SettingsPage: React.FC = () => {
+  const queryClient = useQueryClient();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const [statusesToClear, setStatusesToClear] = useState<JobStatus[]>([
     "discovered",
   ]);
@@ -309,9 +312,6 @@ export const SettingsPage: React.FC = () => {
     useState(false);
 
   // Backup state
-  const [backups, setBackups] = useState<BackupInfo[]>([]);
-  const [nextScheduled, setNextScheduled] = useState<string | null>(null);
-  const [isLoadingBackups, setIsLoadingBackups] = useState(false);
   const [isCreatingBackup, setIsCreatingBackup] = useState(false);
   const [isDeletingBackup, setIsDeletingBackup] = useState(false);
   const {
@@ -339,34 +339,32 @@ export const SettingsPage: React.FC = () => {
     formState: { isDirty, errors, isValid, dirtyFields },
   } = methods;
 
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.settings.current(),
+    queryFn: api.getSettings,
+  });
+  const backupsQuery = useQuery({
+    queryKey: queryKeys.backups.list(),
+    queryFn: api.getBackups,
+  });
+  const updateSettingsMutation = useUpdateSettingsMutation();
+  const isLoading = settingsQuery.isLoading;
+  const backups = backupsQuery.data?.backups ?? [];
+  const nextScheduled = backupsQuery.data?.nextScheduled ?? null;
+  const isLoadingBackups = backupsQuery.isLoading;
+  useQueryErrorToast(backupsQuery.error, "Failed to load backups");
+
   const hasRxResumeAccess = Boolean(
     settings?.rxresumeEmail?.trim() && settings?.rxresumePasswordHint,
   );
 
   useEffect(() => {
-    let isMounted = true;
-    setIsLoading(true);
-    api
-      .getSettings()
-      .then((data) => {
-        if (!isMounted) return;
-        setSettings(data);
-        reset(mapSettingsToForm(data));
-      })
-      .catch((error) => {
-        const message =
-          error instanceof Error ? error.message : "Failed to load settings";
-        toast.error(message);
-      })
-      .finally(() => {
-        if (!isMounted) return;
-        setIsLoading(false);
-      });
+    if (!settingsQuery.data) return;
+    setSettings(settingsQuery.data);
+    reset(mapSettingsToForm(settingsQuery.data));
+  }, [settingsQuery.data, reset]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [reset]);
+  useQueryErrorToast(settingsQuery.error, "Failed to load settings");
 
   useEffect(() => {
     if (!settings) return;
@@ -442,28 +440,12 @@ export const SettingsPage: React.FC = () => {
     scoring,
   } = derived;
 
-  // Backup functions
-  const loadBackups = useCallback(async () => {
-    setIsLoadingBackups(true);
-    try {
-      const response = await api.getBackups();
-      setBackups(response.backups);
-      setNextScheduled(response.nextScheduled);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to load backups";
-      toast.error(message);
-    } finally {
-      setIsLoadingBackups(false);
-    }
-  }, []);
-
   const handleCreateBackup = async () => {
     setIsCreatingBackup(true);
     try {
       await api.createManualBackup();
       toast.success("Backup created successfully");
-      await loadBackups();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.backups.all });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to create backup";
@@ -484,7 +466,7 @@ export const SettingsPage: React.FC = () => {
     try {
       await api.deleteBackup(filename);
       toast.success("Backup deleted successfully");
-      await loadBackups();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.backups.all });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to delete backup";
@@ -497,7 +479,9 @@ export const SettingsPage: React.FC = () => {
   const handleVerifyTracerReadiness = useCallback(async () => {
     try {
       const readiness = await refreshReadiness(true);
-      if (readiness.canEnable) {
+      if (!readiness) {
+        toast.error("Tracer links are unavailable. Verify your public URL.");
+      } else if (readiness.canEnable) {
         toast.success("Tracer links are ready");
       } else {
         toast.error(
@@ -513,13 +497,6 @@ export const SettingsPage: React.FC = () => {
       toast.error(message);
     }
   }, [refreshReadiness]);
-
-  // Load backups when settings are loaded
-  useEffect(() => {
-    if (settings) {
-      loadBackups();
-    }
-  }, [settings, loadBackups]);
 
   const effectiveProfileProjects = rxResumeProjectsOverride ?? profileProjects;
   const effectiveMaxProjectsTotal = effectiveProfileProjects.length;
@@ -658,7 +635,7 @@ export const SettingsPage: React.FC = () => {
       // need to track it so that the save button is enabled when it changes
       delete payload.enableBasicAuth;
 
-      const updated = await api.updateSettings(payload);
+      const updated = await updateSettingsMutation.mutateAsync(payload);
       setSettings(updated);
       reset(mapSettingsToForm(updated));
       toast.success("Settings saved");
@@ -758,7 +735,9 @@ export const SettingsPage: React.FC = () => {
   const handleReset = async () => {
     try {
       setIsSaving(true);
-      const updated = await api.updateSettings(NULL_SETTINGS_PAYLOAD);
+      const updated = await updateSettingsMutation.mutateAsync(
+        NULL_SETTINGS_PAYLOAD,
+      );
       setSettings(updated);
       reset(mapSettingsToForm(updated));
       toast.success("Reset to default");

@@ -8,6 +8,7 @@ import type {
   VisaSponsorSearchResult,
   VisaSponsorStatusResponse,
 } from "@shared/types.js";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   Building2,
@@ -23,8 +24,10 @@ import {
   X,
 } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useQueryErrorToast } from "@/client/hooks/useQueryErrorToast";
+import { queryKeys } from "@/client/lib/queryKeys";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerClose, DrawerContent } from "@/components/ui/drawer";
@@ -56,18 +59,13 @@ const getScoreTokens = (score: number) => {
 };
 
 export const VisaSponsorsPage: React.FC = () => {
+  const queryClient = useQueryClient();
   // State
-  const [status, setStatus] = useState<VisaSponsorStatusResponse | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [results, setResults] = useState<VisaSponsorSearchResult[]>([]);
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [selectedOrg, setSelectedOrg] = useState<string | null>(null);
-  const [orgDetails, setOrgDetails] = useState<VisaSponsor[]>([]);
 
   // Loading states
-  const [isLoadingStatus, setIsLoadingStatus] = useState(true);
-  const [isSearching, setIsSearching] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(() =>
     typeof window !== "undefined"
@@ -75,80 +73,56 @@ export const VisaSponsorsPage: React.FC = () => {
       : false,
   );
 
-  // Fetch organization details
-  const fetchOrgDetails = useCallback(async (orgName: string) => {
-    setIsLoadingDetails(true);
-    setSelectedOrg(orgName);
-    try {
-      const details = await api.getVisaSponsorOrganization(orgName);
-      setOrgDetails(details);
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to fetch details";
-      toast.error(message);
-      setOrgDetails([]);
-    } finally {
-      setIsLoadingDetails(false);
-    }
-  }, []);
+  const statusQuery = useQuery<VisaSponsorStatusResponse>({
+    queryKey: queryKeys.visaSponsors.status(),
+    queryFn: api.getVisaSponsorStatus,
+  });
+  const status = statusQuery.data ?? null;
+  useQueryErrorToast(statusQuery.error, "Failed to fetch status");
 
-  const fetchStatus = useCallback(async () => {
-    setIsLoadingStatus(true);
-    try {
-      const data = await api.getVisaSponsorStatus();
-      setStatus(data);
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to fetch status";
-      toast.error(message);
-    } finally {
-      setIsLoadingStatus(false);
-    }
-  }, []);
-
-  // Fetch status on mount
-  useEffect(() => {
-    fetchStatus();
-  }, [fetchStatus]);
-
-  // Search with debounce
-  const handleSearch = useCallback(async (query: string) => {
-    if (!query.trim()) {
-      setResults([]);
-      return;
-    }
-
-    setIsSearching(true);
-    try {
-      const response = await api.searchVisaSponsors({
-        query: query.trim(),
-        limit: 100,
-        minScore: 20,
-      });
-      setResults(response.results);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Search failed";
-      toast.error(message);
-      setResults([]);
-    } finally {
-      setIsSearching(false);
-    }
-  }, []);
-
-  // Debounced search effect
   useEffect(() => {
     const timer = setTimeout(() => {
-      handleSearch(searchQuery);
+      setDebouncedSearchQuery(searchQuery);
     }, 300);
-
     return () => clearTimeout(timer);
-  }, [searchQuery, handleSearch]);
+  }, [searchQuery]);
+
+  const searchQueryResult = useQuery({
+    queryKey: queryKeys.visaSponsors.search(
+      debouncedSearchQuery.trim(),
+      100,
+      20,
+    ),
+    queryFn: () =>
+      api.searchVisaSponsors({
+        query: debouncedSearchQuery.trim(),
+        limit: 100,
+        minScore: 20,
+      }),
+    enabled: Boolean(debouncedSearchQuery.trim()),
+  });
+  useQueryErrorToast(searchQueryResult.error, "Search failed");
+
+  const orgDetailsQuery = useQuery<VisaSponsor[]>({
+    queryKey: queryKeys.visaSponsors.organization(selectedOrg ?? ""),
+    queryFn: () =>
+      selectedOrg
+        ? api.getVisaSponsorOrganization(selectedOrg)
+        : Promise.resolve([]),
+    enabled: Boolean(selectedOrg),
+  });
+  const orgDetails = orgDetailsQuery.data ?? [];
+  useQueryErrorToast(orgDetailsQuery.error, "Failed to fetch details");
+
+  const results = useMemo<VisaSponsorSearchResult[]>(() => {
+    if (!debouncedSearchQuery.trim()) return [];
+    return searchQueryResult.data?.results ?? [];
+  }, [debouncedSearchQuery, searchQueryResult.data]);
 
   // Auto-select first result
   useEffect(() => {
     if (results.length === 0) {
       setSelectedOrg(null);
-      setOrgDetails([]);
       return;
     }
     if (
@@ -157,9 +131,8 @@ export const VisaSponsorsPage: React.FC = () => {
     ) {
       const firstOrg = results[0].sponsor.organisationName;
       setSelectedOrg(firstOrg);
-      fetchOrgDetails(firstOrg);
     }
-  }, [results, fetchOrgDetails, selectedOrg]);
+  }, [results, selectedOrg]);
 
   useEffect(() => {
     if (!selectedOrg) {
@@ -187,25 +160,33 @@ export const VisaSponsorsPage: React.FC = () => {
   }, [isDesktop, isDetailDrawerOpen]);
 
   // Trigger manual update
-  const handleUpdate = async () => {
-    setIsUpdating(true);
-    try {
-      const result = await api.updateVisaSponsorList();
-      setStatus(result.status);
-      toast.success(result.message);
-      if (searchQuery.trim()) {
-        handleSearch(searchQuery);
+  const updateListMutation = useMutation({
+    mutationFn: api.updateVisaSponsorList,
+    onSuccess: async (result) => {
+      queryClient.setQueryData(queryKeys.visaSponsors.status(), result.status);
+      if (debouncedSearchQuery.trim()) {
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.visaSponsors.search(
+            debouncedSearchQuery.trim(),
+            100,
+            20,
+          ),
+        });
       }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Update failed";
+      toast.success(result.message);
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Update failed";
       toast.error(message);
-    } finally {
-      setIsUpdating(false);
-    }
+    },
+  });
+
+  const handleUpdate = async () => {
+    await updateListMutation.mutateAsync();
   };
 
   const handleSelectOrg = (orgName: string) => {
-    fetchOrgDetails(orgName);
+    setSelectedOrg(orgName);
     if (!isDesktop) {
       setIsDetailDrawerOpen(true);
     }
@@ -217,7 +198,10 @@ export const VisaSponsorsPage: React.FC = () => {
     [results, selectedOrg],
   );
 
-  const isUpdateInProgress = isUpdating || status?.isUpdating;
+  const isUpdateInProgress = updateListMutation.isPending || status?.isUpdating;
+  const isLoadingStatus = statusQuery.isLoading;
+  const isSearching = searchQueryResult.isFetching;
+  const isLoadingDetails = orgDetailsQuery.isLoading;
 
   const detailPanelContent = !selectedOrg ? (
     <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
@@ -412,9 +396,9 @@ export const VisaSponsorsPage: React.FC = () => {
                   <Button
                     size="sm"
                     onClick={handleUpdate}
-                    disabled={isUpdating}
+                    disabled={isUpdateInProgress}
                   >
-                    {isUpdating ? (
+                    {isUpdateInProgress ? (
                       <>
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                         Downloading...
