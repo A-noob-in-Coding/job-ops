@@ -5,6 +5,7 @@ import {
   isSourceAllowedForCountry,
   normalizeCountryKey,
 } from "@shared/location-support.js";
+import { normalizeStringArray } from "@shared/normalize-string-array.js";
 import { parseSearchCitiesSetting } from "@shared/search-cities.js";
 import type { CreateJobInput, PipelineConfig } from "@shared/types";
 import * as jobsRepo from "../../repositories/jobs";
@@ -30,6 +31,31 @@ type DiscoverySourceTask = {
   detail: string;
   run: () => Promise<DiscoveryTaskResult>;
 };
+
+function parseBlockedCompanyKeywords(raw: string | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return normalizeStringArray(
+      parsed.filter((value): value is string => typeof value === "string"),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function isBlockedEmployer(
+  employer: string | null | undefined,
+  blockedKeywordsLowerCase: string[],
+): boolean {
+  if (!employer) return false;
+  if (blockedKeywordsLowerCase.length === 0) return false;
+  const normalizedEmployer = employer.toLowerCase();
+  return blockedKeywordsLowerCase.some((keyword) =>
+    normalizedEmployer.includes(keyword),
+  );
+}
 
 export async function discoverJobsStep(args: {
   mergedConfig: PipelineConfig;
@@ -525,11 +551,41 @@ export async function discoverJobsStep(args: {
     sourceErrors.push(...sourceResult.sourceErrors);
   }
 
-  if (args.shouldCancel?.()) {
-    return { discoveredJobs, sourceErrors };
+  const blockedCompanyKeywords = parseBlockedCompanyKeywords(
+    settings.blockedCompanyKeywords,
+  );
+  const blockedKeywordsLowerCase = blockedCompanyKeywords.map((value) =>
+    value.toLowerCase(),
+  );
+  const filteredDiscoveredJobs = discoveredJobs.filter(
+    (job) => !isBlockedEmployer(job.employer, blockedKeywordsLowerCase),
+  );
+  const droppedCount = discoveredJobs.length - filteredDiscoveredJobs.length;
+
+  if (droppedCount > 0) {
+    const blockedCompanyKeywordsPreview = blockedCompanyKeywords.slice(0, 10);
+    const blockedCompanyKeywordsTruncated =
+      blockedCompanyKeywordsPreview.length < blockedCompanyKeywords.length;
+
+    logger.info("Dropped discovered jobs matching blocked company keywords", {
+      step: "discover-jobs",
+      droppedCount,
+      blockedKeywordCount: blockedCompanyKeywords.length,
+      blockedCompanyKeywordsPreview,
+      blockedCompanyKeywordsTruncated,
+    });
+
+    logger.debug("Full blocked company keywords used for filtering", {
+      step: "discover-jobs",
+      blockedCompanyKeywords,
+    });
   }
 
-  if (discoveredJobs.length === 0 && sourceErrors.length > 0) {
+  if (args.shouldCancel?.()) {
+    return { discoveredJobs: filteredDiscoveredJobs, sourceErrors };
+  }
+
+  if (filteredDiscoveredJobs.length === 0 && sourceErrors.length > 0) {
     throw new Error(`All sources failed: ${sourceErrors.join("; ")}`);
   }
 
@@ -537,7 +593,7 @@ export async function discoverJobsStep(args: {
     logger.warn("Some discovery sources failed", { sourceErrors });
   }
 
-  progressHelpers.crawlingComplete(discoveredJobs.length);
+  progressHelpers.crawlingComplete(filteredDiscoveredJobs.length);
 
-  return { discoveredJobs, sourceErrors };
+  return { discoveredJobs: filteredDiscoveredJobs, sourceErrors };
 }

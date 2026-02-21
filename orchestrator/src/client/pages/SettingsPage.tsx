@@ -18,6 +18,7 @@ import {
   resumeProjectsEqual,
 } from "@client/pages/settings/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { normalizeStringArray } from "@shared/normalize-string-array.js";
 import {
   type UpdateSettingsInput,
   updateSettingsSchema,
@@ -72,6 +73,7 @@ const DEFAULT_FORM_VALUES: UpdateSettingsInput = {
   penalizeMissingSalary: null,
   missingSalaryPenalty: null,
   autoSkipScoreThreshold: null,
+  blockedCompanyKeywords: [],
 };
 
 type LlmProviderValue = LlmProviderId | null;
@@ -114,6 +116,7 @@ const NULL_SETTINGS_PAYLOAD: UpdateSettingsInput = {
   penalizeMissingSalary: null,
   missingSalaryPenalty: null,
   autoSkipScoreThreshold: null,
+  blockedCompanyKeywords: null,
 };
 
 const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
@@ -149,6 +152,7 @@ const mapSettingsToForm = (data: AppSettings): UpdateSettingsInput => ({
   penalizeMissingSalary: data.penalizeMissingSalary.override,
   missingSalaryPenalty: data.missingSalaryPenalty.override,
   autoSkipScoreThreshold: data.autoSkipScoreThreshold.override,
+  blockedCompanyKeywords: data.blockedCompanyKeywords.override ?? [],
 });
 
 const normalizeString = (value: string | null | undefined) => {
@@ -160,6 +164,11 @@ const normalizePrivateInput = (value: string | null | undefined) => {
   const trimmed = value?.trim();
   if (trimmed === "") return null;
   return trimmed || undefined;
+};
+
+const stringArraysEqual = (left: string[], right: string[]): boolean => {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
 };
 
 const nullIfSame = <T,>(value: T | null | undefined, defaultValue: T) =>
@@ -290,6 +299,10 @@ const getDerivedSettings = (settings: AppSettings | null) => {
       autoSkipScoreThreshold: {
         effective: settings?.autoSkipScoreThreshold?.value ?? null,
         default: settings?.autoSkipScoreThreshold?.default ?? null,
+      },
+      blockedCompanyKeywords: {
+        effective: settings?.blockedCompanyKeywords?.value ?? [],
+        default: settings?.blockedCompanyKeywords?.default ?? [],
       },
     },
   };
@@ -627,6 +640,15 @@ export const SettingsPage: React.FC = () => {
           data.missingSalaryPenalty,
           scoring.missingSalaryPenalty.default,
         ),
+        blockedCompanyKeywords: (() => {
+          const normalized = normalizeStringArray(data.blockedCompanyKeywords);
+          const normalizedDefault = normalizeStringArray(
+            scoring.blockedCompanyKeywords.default,
+          );
+          return stringArraysEqual(normalized, normalizedDefault)
+            ? null
+            : normalized;
+        })(),
         ...envPayload,
       };
 
