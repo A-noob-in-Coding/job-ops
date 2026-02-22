@@ -2,7 +2,26 @@ import type * as Preset from "@docusaurus/preset-classic";
 import type { Config } from "@docusaurus/types";
 import { themes as prismThemes } from "prism-react-renderer";
 
-const siteUrl = process.env.DOCS_SITE_URL ?? "http://localhost:3006";
+type SitemapItem = { url: string } & Record<string, unknown>;
+type SitemapCreateParams = {
+  defaultCreateSitemapItems: (params: unknown) => Promise<unknown>;
+};
+
+function isSitemapItem(value: unknown): value is SitemapItem {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const maybeItem = value as { url?: unknown };
+  return typeof maybeItem.url === "string";
+}
+
+const productionSiteUrl = "https://jobops.dakheera47.com";
+const siteUrl =
+  process.env.DOCS_SITE_URL ??
+  (process.env.NODE_ENV === "development"
+    ? "http://localhost:3006"
+    : productionSiteUrl);
 const configuredBaseUrl = process.env.DOCS_BASE_URL ?? "/docs/";
 const normalizedBaseUrl = configuredBaseUrl.startsWith("/")
   ? configuredBaseUrl
@@ -40,6 +59,24 @@ const config: Config = {
           editUrl: "https://github.com/DaKheera47/job-ops/tree/main/docs-site/",
           showLastUpdateAuthor: false,
           showLastUpdateTime: true,
+        },
+        sitemap: {
+          // Keep search engines focused on the current stable docs URLs.
+          async createSitemapItems(params: SitemapCreateParams) {
+            const rawItems = await params.defaultCreateSitemapItems(params);
+            if (!Array.isArray(rawItems)) {
+              return [];
+            }
+
+            return rawItems.filter(isSitemapItem).filter((item) => {
+              const pathname = new URL(item.url).pathname;
+              const isNextDocsRoute = pathname.startsWith("/docs/next/");
+              const isVersionedDocsRoute =
+                /^\/docs\/\d+\.\d+\.\d+(?:\/|$)/.test(pathname);
+
+              return !isNextDocsRoute && !isVersionedDocsRoute;
+            });
+          },
         },
         blog: false,
         pages: false,
