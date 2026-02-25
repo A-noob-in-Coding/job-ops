@@ -1,3 +1,5 @@
+declare const __APP_VERSION__: string;
+
 type UmamiTracker = {
   track: (event: string, data?: Record<string, unknown>) => void;
 };
@@ -11,12 +13,14 @@ declare global {
 export function trackEvent(event: string, data?: Record<string, unknown>) {
   if (typeof window === "undefined") return;
   const analyticsUserId = getAnalyticsUserId();
+  const appVersion = getAnalyticsAppVersion();
   const payload =
-    analyticsUserId === null
+    analyticsUserId === null && appVersion === null
       ? data
       : {
           ...(data ?? {}),
-          analytics_user_id: analyticsUserId,
+          ...(analyticsUserId ? { analytics_user_id: analyticsUserId } : {}),
+          ...(appVersion ? { app_version: appVersion } : {}),
         };
   window.umami?.track(event, payload);
 }
@@ -144,6 +148,16 @@ function getAnalyticsUserId(): string | null {
     window.localStorage.setItem(ANALYTICS_USER_ID_STORAGE_KEY, next);
     cachedAnalyticsUserId = next;
     return next;
+  } catch {
+    return null;
+  }
+}
+
+function getAnalyticsAppVersion(): string | null {
+  try {
+    return typeof __APP_VERSION__ !== "undefined" && __APP_VERSION__.trim()
+      ? __APP_VERSION__
+      : null;
   } catch {
     return null;
   }

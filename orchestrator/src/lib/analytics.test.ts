@@ -14,6 +14,7 @@ describe("analytics", () => {
     track.mockReset();
     __resetAnalyticsTestState();
     window.localStorage.clear();
+    (globalThis as any).__APP_VERSION__ = "abc1234-dev";
     Object.defineProperty(window, "umami", {
       configurable: true,
       value: { track },
@@ -36,7 +37,7 @@ describe("analytics", () => {
     expect(track).toHaveBeenCalledTimes(2);
   });
 
-  it("attaches a stable anonymous analytics user id to every event", () => {
+  it("attaches stable analytics metadata to every event", () => {
     trackEvent("star_repo_click", { location: "demo_mode_banner" });
     trackProductEvent("tracer_drilldown_mode_changed", { mode: "all" });
 
@@ -50,6 +51,8 @@ describe("analytics", () => {
     expect(firstPayload.analytics_user_id).toBeTruthy();
     expect(secondPayload.analytics_user_id).toBe(firstPayload.analytics_user_id);
     expect(storedId).toBe(firstPayload.analytics_user_id);
+    expect(firstPayload.app_version).toBe("abc1234-dev");
+    expect(secondPayload.app_version).toBe("abc1234-dev");
   });
 
   it("drops disallowed keys and non-primitive payload values", () => {
@@ -76,6 +79,7 @@ describe("analytics", () => {
       has_city_locations: true,
       search_terms_count: 3,
       analytics_user_id: expect.any(String),
+      app_version: "abc1234-dev",
     });
   });
 
