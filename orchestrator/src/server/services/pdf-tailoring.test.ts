@@ -3,7 +3,7 @@ import { generatePdf } from "./pdf";
 import * as projectSelection from "./projectSelection";
 
 // Define mock data in hoisted block
-const { mocks, mockProfile, mockRxResumeClient } = vi.hoisted(() => {
+const { mocks, mockProfile, mockRxResume } = vi.hoisted(() => {
   const profile = {
     sections: {
       summary: { content: "Original Summary" },
@@ -22,25 +22,16 @@ const { mocks, mockProfile, mockRxResumeClient } = vi.hoisted(() => {
   // Capture what's passed to create()
   let lastCreateData: any = null;
 
-  const mockClient = {
-    create: vi.fn().mockImplementation((data: any) => {
+  const mockRxResumeApi = {
+    importResume: vi.fn().mockImplementation((payload: any) => {
+      const data = payload?.data;
       lastCreateData = JSON.parse(JSON.stringify(data)); // Deep clone
       return Promise.resolve("mock-resume-id");
     }),
-    print: vi.fn().mockResolvedValue("https://example.com/pdf/mock.pdf"),
-    delete: vi.fn().mockResolvedValue(undefined),
-    withAutoRefresh: vi
+    exportResumePdf: vi
       .fn()
-      .mockImplementation(
-        async (
-          _email: string,
-          _password: string,
-          operation: (token: string) => Promise<any>,
-        ) => {
-          return operation("mock-token");
-        },
-      ),
-    getToken: vi.fn().mockResolvedValue("mock-token"),
+      .mockResolvedValue("https://example.com/pdf/mock.pdf"),
+    deleteResume: vi.fn().mockResolvedValue(undefined),
     getLastCreateData: () => lastCreateData,
     clearLastCreateData: () => {
       lastCreateData = null;
@@ -56,7 +47,7 @@ const { mocks, mockProfile, mockRxResumeClient } = vi.hoisted(() => {
       access: vi.fn().mockResolvedValue(undefined),
       unlink: vi.fn().mockResolvedValue(undefined),
     },
-    mockRxResumeClient: mockClient,
+    mockRxResume: mockRxResumeApi,
   };
 });
 
@@ -159,12 +150,79 @@ vi.mock("./tracer-links", () => ({
   rewriteResumeLinksWithTracer: mockTracerLinks.rewriteResumeLinksWithTracer,
 }));
 
-// Mock the RxResumeClient
-vi.mock("./rxresume-client", () => ({
-  RxResumeClient: vi.fn().mockImplementation(function (this: any) {
-    return mockRxResumeClient;
+vi.mock("./rxresume/baseResumeId", () => ({
+  getConfiguredRxResumeBaseResumeId: vi.fn().mockResolvedValue({
+    mode: "v4",
+    resumeId: "base-resume-id",
   }),
 }));
+
+vi.mock("./rxresume", async () => {
+  const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
+  const projectSelectionModule = await import("./projectSelection");
+  return {
+    getResume: vi.fn().mockResolvedValue({
+      id: "base-resume-id",
+      name: "Base Resume",
+      mode: "v4",
+      data: mockProfile,
+    }),
+    prepareTailoredResumeForPdf: vi
+      .fn()
+      .mockImplementation(async (args: any) => {
+        const data = clone(args.resumeData);
+        if (args.tailedContent?.summary || args.tailoredContent?.summary) {
+          const summary = args.tailoredContent?.summary;
+          if (data.sections?.summary) data.sections.summary.content = summary;
+        }
+        if (args.tailoredContent?.headline && data.basics) {
+          data.basics.headline = args.tailoredContent.headline;
+        }
+
+        let selected = (args.selectedProjectIds as string | null | undefined)
+          ?.split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (!selected) {
+          selected = await projectSelectionModule.pickProjectIdsForJob({
+            jobDescription: args.jobDescription,
+            eligibleProjects: [
+              { id: "p1", name: "Project 1" },
+              { id: "p2", name: "Project 2" },
+            ],
+            desiredCount: 3,
+          } as any);
+        }
+        const selectedSet = new Set(selected);
+        for (const item of data.sections?.projects?.items ?? []) {
+          item.visible = selectedSet.has(item.id);
+        }
+        if (data.sections?.projects) data.sections.projects.visible = true;
+
+        if (args.tracerLinks?.enabled) {
+          mockTracerLinks.resolveTracerPublicBaseUrl({
+            requestOrigin: args.tracerLinks.requestOrigin,
+          });
+          await mockTracerLinks.rewriteResumeLinksWithTracer({
+            jobId: args.jobId,
+            resumeData: data,
+            publicBaseUrl: "https://jobops.example",
+            companyName: args.tracerLinks.companyName ?? null,
+          });
+        }
+
+        return {
+          mode: "v4",
+          data,
+          projectCatalog: [],
+          selectedProjectIds: [...selectedSet],
+        };
+      }),
+    importResume: mockRxResume.importResume,
+    exportResumePdf: mockRxResume.exportResumePdf,
+    deleteResume: mockRxResume.deleteResume,
+  };
+});
 
 // Mock stream pipeline for downloading PDF
 vi.mock("stream/promises", () => ({
@@ -225,7 +283,7 @@ describe("PDF Service Tailoring Logic", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.readFile.mockResolvedValue(JSON.stringify(mockProfile));
-    mockRxResumeClient.clearLastCreateData();
+    mockRxResume.clearLastCreateData();
     mockTracerLinks.resolveTracerPublicBaseUrl.mockReturnValue(
       "https://jobops.example",
     );
@@ -247,8 +305,8 @@ describe("PDF Service Tailoring Logic", () => {
     expect(projectSelection.pickProjectIdsForJob).not.toHaveBeenCalled();
 
     // 2. Verify create data content
-    expect(mockRxResumeClient.create).toHaveBeenCalled();
-    const savedResumeJson = mockRxResumeClient.getLastCreateData();
+    expect(mockRxResume.importResume).toHaveBeenCalled();
+    const savedResumeJson = mockRxResume.getLastCreateData();
 
     const projects = savedResumeJson.sections.projects.items;
     const p1 = projects.find((p: any) => p.id === "p1");
@@ -265,8 +323,8 @@ describe("PDF Service Tailoring Logic", () => {
   it("should handle comma-separated project IDs correctly", async () => {
     await generatePdf("job-2", {}, "desc", "base.json", "p1, p2 ");
 
-    expect(mockRxResumeClient.create).toHaveBeenCalled();
-    const savedResumeJson = mockRxResumeClient.getLastCreateData();
+    expect(mockRxResume.importResume).toHaveBeenCalled();
+    const savedResumeJson = mockRxResume.getLastCreateData();
     const projects = savedResumeJson.sections.projects.items;
 
     expect(projects.find((p: any) => p.id === "p1").visible).toBe(true);
@@ -276,8 +334,8 @@ describe("PDF Service Tailoring Logic", () => {
   it("keeps projects section visible when selected project list is explicitly empty", async () => {
     await generatePdf("job-empty-projects", {}, "desc", "base.json", "");
 
-    expect(mockRxResumeClient.create).toHaveBeenCalled();
-    const savedResumeJson = mockRxResumeClient.getLastCreateData();
+    expect(mockRxResume.importResume).toHaveBeenCalled();
+    const savedResumeJson = mockRxResume.getLastCreateData();
     const projects = savedResumeJson.sections.projects.items;
 
     expect(projects.find((p: any) => p.id === "p1").visible).toBe(false);
@@ -293,8 +351,8 @@ describe("PDF Service Tailoring Logic", () => {
 
     expect(projectSelection.pickProjectIdsForJob).toHaveBeenCalled();
 
-    expect(mockRxResumeClient.create).toHaveBeenCalled();
-    const savedResumeJson = mockRxResumeClient.getLastCreateData();
+    expect(mockRxResume.importResume).toHaveBeenCalled();
+    const savedResumeJson = mockRxResume.getLastCreateData();
 
     const p1 = savedResumeJson.sections.projects.items.find(
       (p: any) => p.id === "p1",

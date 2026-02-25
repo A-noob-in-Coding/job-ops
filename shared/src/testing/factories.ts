@@ -148,6 +148,8 @@ export const createAppSettings = (
     override: null,
   },
   rxresumeBaseResumeId: null,
+  rxresumeBaseResumeIdV4: null,
+  rxresumeBaseResumeIdV5: null,
   ukvisajobsMaxJobs: { value: 50, default: 50, override: null },
   adzunaMaxJobsPerTerm: { value: 50, default: 50, override: null },
   gradcrackerMaxJobsPerTerm: { value: 50, default: 50, override: null },
@@ -182,6 +184,7 @@ export const createAppSettings = (
   chatStyleConstraints: { value: "", default: "", override: null },
   chatStyleDoNotUse: { value: "", default: "", override: null },
   llmApiKeyHint: null,
+  rxresumeApiKeyHint: null,
   rxresumeEmail: null,
   rxresumePasswordHint: null,
   basicAuthUser: null,
@@ -198,5 +201,6 @@ export const createAppSettings = (
   penalizeMissingSalary: { value: false, default: false, override: null },
   missingSalaryPenalty: { value: 10, default: 10, override: null },
   autoSkipScoreThreshold: { value: null, default: null, override: null },
+  rxresumeMode: { value: "v5", default: "v5", override: null },
   ...overrides,
 });

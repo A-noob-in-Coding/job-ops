@@ -5,7 +5,7 @@ import { getProfile } from "./profile";
 process.env.DATA_DIR = "/tmp";
 
 // Define mock data in hoisted block
-const { mocks, mockProfile, mockRxResumeClient } = vi.hoisted(() => {
+const { mocks, mockProfile, mockRxResume } = vi.hoisted(() => {
   const profile = {
     sections: {
       summary: { content: "Original Summary" },
@@ -29,25 +29,16 @@ const { mocks, mockProfile, mockRxResumeClient } = vi.hoisted(() => {
   // Capture what's passed to create()
   let lastCreateData: any = null;
 
-  const mockClient = {
-    create: vi.fn().mockImplementation((data: any) => {
+  const mockRxResumeApi = {
+    importResume: vi.fn().mockImplementation((payload: any) => {
+      const data = payload?.data;
       lastCreateData = JSON.parse(JSON.stringify(data)); // Deep clone
       return Promise.resolve("mock-resume-id");
     }),
-    print: vi.fn().mockResolvedValue("https://example.com/pdf/mock.pdf"),
-    delete: vi.fn().mockResolvedValue(undefined),
-    withAutoRefresh: vi
+    exportResumePdf: vi
       .fn()
-      .mockImplementation(
-        async (
-          _email: string,
-          _password: string,
-          operation: (token: string) => Promise<any>,
-        ) => {
-          return operation("mock-token");
-        },
-      ),
-    getToken: vi.fn().mockResolvedValue("mock-token"),
+      .mockResolvedValue("https://example.com/pdf/mock.pdf"),
+    deleteResume: vi.fn().mockResolvedValue(undefined),
     getLastCreateData: () => lastCreateData,
     clearLastCreateData: () => {
       lastCreateData = null;
@@ -63,7 +54,7 @@ const { mocks, mockProfile, mockRxResumeClient } = vi.hoisted(() => {
       access: vi.fn().mockResolvedValue(undefined),
       unlink: vi.fn().mockResolvedValue(undefined),
     },
-    mockRxResumeClient: mockClient,
+    mockRxResume: mockRxResumeApi,
   };
 });
 
@@ -161,12 +152,76 @@ vi.mock("./resumeProjects", () => ({
   }),
 }));
 
-// Mock the RxResumeClient
-vi.mock("./rxresume-client", () => ({
-  RxResumeClient: vi.fn().mockImplementation(function (this: any) {
-    return mockRxResumeClient;
+vi.mock("./rxresume/baseResumeId", () => ({
+  getConfiguredRxResumeBaseResumeId: vi.fn().mockResolvedValue({
+    mode: "v4",
+    resumeId: "base-resume-id",
   }),
 }));
+
+vi.mock("./rxresume", async () => {
+  const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
+  const { createId } = await import("@paralleldrive/cuid2");
+  const profileModule = await import("./profile");
+  return {
+    getResume: vi.fn().mockImplementation(async () => ({
+      id: "base-resume-id",
+      name: "Base Resume",
+      mode: "v4",
+      data: await profileModule.getProfile(),
+    })),
+    prepareTailoredResumeForPdf: vi
+      .fn()
+      .mockImplementation(async (args: any) => {
+        const data = clone(args.resumeData);
+        if (
+          data.sections?.skills?.items &&
+          Array.isArray(data.sections.skills.items)
+        ) {
+          data.sections.skills.items = data.sections.skills.items.map(
+            (skill: any) => ({
+              ...skill,
+              id: skill.id || createId(),
+              visible: skill.visible ?? true,
+              description: skill.description ?? "",
+              level: skill.level ?? 1,
+              keywords: skill.keywords || [],
+            }),
+          );
+        }
+
+        if (args.tailoredContent?.skills && data.sections?.skills) {
+          const existingSkills = data.sections.skills.items || [];
+          data.sections.skills.items = args.tailoredContent.skills.map(
+            (newSkill: any) => {
+              const existing = existingSkills.find(
+                (s: any) => s.name === newSkill.name,
+              );
+              return {
+                id: newSkill.id || existing?.id || createId(),
+                visible: newSkill.visible ?? existing?.visible ?? true,
+                name: newSkill.name || existing?.name || "",
+                description:
+                  newSkill.description ?? existing?.description ?? "",
+                level: newSkill.level ?? existing?.level ?? 0,
+                keywords: newSkill.keywords || existing?.keywords || [],
+              };
+            },
+          );
+        }
+
+        return {
+          mode: "v4",
+          data,
+          projectCatalog: [],
+          selectedProjectIds: [],
+        };
+      }),
+    importResume: mockRxResume.importResume,
+    exportResumePdf: mockRxResume.exportResumePdf,
+    deleteResume: mockRxResume.deleteResume,
+  };
+});
 
 // Mock stream pipeline for downloading PDF
 vi.mock("stream/promises", () => ({
@@ -227,7 +282,7 @@ describe("PDF Service Skills Validation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getProfile).mockResolvedValue(mockProfile);
-    mockRxResumeClient.clearLastCreateData();
+    mockRxResume.clearLastCreateData();
   });
 
   it("should add required schema fields (visible, description) to new skills", async () => {
@@ -241,8 +296,8 @@ describe("PDF Service Skills Validation", () => {
 
     await generatePdf("job-skills-1", tailoredContent, "Job Desc");
 
-    expect(mockRxResumeClient.create).toHaveBeenCalled();
-    const savedResumeJson = mockRxResumeClient.getLastCreateData();
+    expect(mockRxResume.importResume).toHaveBeenCalled();
+    const savedResumeJson = mockRxResume.getLastCreateData();
 
     const skillItems = savedResumeJson.sections.skills.items;
 
@@ -297,8 +352,8 @@ describe("PDF Service Skills Validation", () => {
     // No tailoring, pass dummy path to bypass getProfile cache and use readFile mock
     await generatePdf("job-no-tailor", {}, "Job Desc", "dummy.json");
 
-    expect(mockRxResumeClient.create).toHaveBeenCalled();
-    const savedResumeJson = mockRxResumeClient.getLastCreateData();
+    expect(mockRxResume.importResume).toHaveBeenCalled();
+    const savedResumeJson = mockRxResume.getLastCreateData();
 
     const item = savedResumeJson.sections.skills.items[0];
 
@@ -349,8 +404,8 @@ describe("PDF Service Skills Validation", () => {
 
     await generatePdf("job-cuid2-test", {}, "Job Desc", "dummy.json");
 
-    expect(mockRxResumeClient.create).toHaveBeenCalled();
-    const savedResumeJson = mockRxResumeClient.getLastCreateData();
+    expect(mockRxResume.importResume).toHaveBeenCalled();
+    const savedResumeJson = mockRxResume.getLastCreateData();
 
     const skillItems = savedResumeJson.sections.skills.items;
 
@@ -394,8 +449,8 @@ describe("PDF Service Skills Validation", () => {
 
     await generatePdf("job-no-skill-prefix", {}, "Job Desc", "dummy.json");
 
-    expect(mockRxResumeClient.create).toHaveBeenCalled();
-    const savedResumeJson = mockRxResumeClient.getLastCreateData();
+    expect(mockRxResume.importResume).toHaveBeenCalled();
+    const savedResumeJson = mockRxResume.getLastCreateData();
 
     const skill = savedResumeJson.sections.skills.items[0];
 
@@ -430,8 +485,8 @@ describe("PDF Service Skills Validation", () => {
 
     await generatePdf("job-preserve-id", {}, "Job Desc", "dummy.json");
 
-    expect(mockRxResumeClient.create).toHaveBeenCalled();
-    const savedResumeJson = mockRxResumeClient.getLastCreateData();
+    expect(mockRxResume.importResume).toHaveBeenCalled();
+    const savedResumeJson = mockRxResume.getLastCreateData();
 
     const skill = savedResumeJson.sections.skills.items[0];
 

@@ -6,18 +6,18 @@ vi.mock("../repositories/settings", () => ({
   getSetting: vi.fn(),
 }));
 
-vi.mock("./rxresume-v4", () => ({
+vi.mock("./rxresume", () => ({
   getResume: vi.fn(),
-  RxResumeCredentialsError: class RxResumeCredentialsError extends Error {
+  RxResumeAuthConfigError: class RxResumeAuthConfigError extends Error {
     constructor() {
-      super("RxResume credentials not configured.");
-      this.name = "RxResumeCredentialsError";
+      super("Reactive Resume credentials not configured.");
+      this.name = "RxResumeAuthConfigError";
     }
   },
 }));
 
 import { getSetting } from "../repositories/settings";
-import { getResume, RxResumeCredentialsError } from "./rxresume-v4";
+import { getResume, RxResumeAuthConfigError } from "./rxresume";
 
 describe("getProfile", () => {
   beforeEach(() => {
@@ -33,7 +33,7 @@ describe("getProfile", () => {
     );
   });
 
-  it("should fetch profile from RxResume v4 API when configured", async () => {
+  it("should fetch profile from Reactive Resume when configured", async () => {
     const mockResumeData = { basics: { name: "Test User" } };
     vi.mocked(getSetting).mockResolvedValue("test-resume-id");
     vi.mocked(getResume).mockResolvedValue({
@@ -43,6 +43,7 @@ describe("getProfile", () => {
 
     const profile = await getProfile();
 
+    expect(getSetting).toHaveBeenCalledWith("rxresumeMode");
     expect(getSetting).toHaveBeenCalledWith("rxresumeBaseResumeId");
     expect(getResume).toHaveBeenCalledWith("test-resume-id");
     expect(profile).toEqual(mockResumeData);
@@ -59,8 +60,8 @@ describe("getProfile", () => {
     await getProfile();
     await getProfile();
 
-    // getSetting is called each time to check resumeId
-    expect(getSetting).toHaveBeenCalledTimes(2);
+    // The helper reads mode + legacy/per-mode resume-id settings each call.
+    expect(getSetting).toHaveBeenCalledTimes(8);
     // But getResume should only be called once due to caching
     expect(getResume).toHaveBeenCalledTimes(1);
   });
@@ -81,10 +82,12 @@ describe("getProfile", () => {
 
   it("should throw user-friendly error on credential issues", async () => {
     vi.mocked(getSetting).mockResolvedValue("test-resume-id");
-    vi.mocked(getResume).mockRejectedValue(new RxResumeCredentialsError());
+    vi.mocked(getResume).mockRejectedValue(
+      new (RxResumeAuthConfigError as unknown as new () => Error)(),
+    );
 
     await expect(getProfile()).rejects.toThrow(
-      "RxResume credentials not configured. Set RXRESUME_EMAIL and RXRESUME_PASSWORD in settings.",
+      "Reactive Resume credentials not configured.",
     );
   });
 

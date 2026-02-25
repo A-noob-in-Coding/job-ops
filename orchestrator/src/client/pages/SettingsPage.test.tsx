@@ -14,6 +14,7 @@ const render = (ui: Parameters<typeof renderWithQueryClient>[0]) =>
 vi.mock("../api", () => ({
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
+  validateRxresume: vi.fn(),
   clearDatabase: vi.fn(),
   deleteJobsByStatus: vi.fn(),
   getTracerReadiness: vi.fn(),
@@ -57,6 +58,11 @@ const renderPage = () => {
   );
 };
 
+const openModelSection = async () => {
+  const modelTrigger = await screen.findByRole("button", { name: /^model$/i });
+  fireEvent.click(modelTrigger);
+};
+
 describe("SettingsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -69,6 +75,10 @@ describe("SettingsPage", () => {
       checkedAt: Date.now(),
       lastSuccessAt: Date.now(),
       reason: null,
+    });
+    vi.mocked(api.validateRxresume).mockResolvedValue({
+      valid: false,
+      message: "Missing credentials",
     });
   });
 
@@ -84,6 +94,7 @@ describe("SettingsPage", () => {
     });
 
     renderPage();
+    await openModelSection();
 
     const modelInput = screen.getByLabelText(/default model/i);
     await waitFor(() => expect(modelInput).toBeEnabled());
@@ -107,6 +118,7 @@ describe("SettingsPage", () => {
     vi.mocked(api.getSettings).mockResolvedValue(baseSettings);
 
     renderPage();
+    await openModelSection();
 
     const modelInput = screen.getByLabelText(/default model/i);
     await waitFor(() => expect(modelInput).toBeEnabled());
@@ -166,6 +178,7 @@ describe("SettingsPage", () => {
     renderPage();
     const saveButton = screen.getByRole("button", { name: /^save$/i });
     expect(saveButton).toBeDisabled();
+    await openModelSection();
 
     const modelInput = screen.getByLabelText(/default model/i);
     // Wait for the query to resolve and input to be enabled
@@ -207,7 +220,40 @@ describe("SettingsPage", () => {
       /show visa sponsor information/i,
     );
     fireEvent.click(sponsorCheckbox);
-    expect(saveButton).toBeEnabled();
+    await waitFor(() => expect(saveButton).toBeEnabled());
+  });
+
+  it("allows saving when both Reactive Resume v4 and v5 credentials are present", async () => {
+    const settingsWithBothRxResumeAuth = createAppSettings({
+      rxresumeEmail: "resume@example.com",
+      rxresumePasswordHint: "pass",
+      rxresumeApiKeyHint: "api_",
+    });
+    vi.mocked(api.getSettings).mockResolvedValue(settingsWithBothRxResumeAuth);
+    vi.mocked(api.updateSettings).mockResolvedValue(
+      settingsWithBothRxResumeAuth,
+    );
+
+    renderPage();
+
+    const displayTrigger = await screen.findByRole("button", {
+      name: /display settings/i,
+    });
+    fireEvent.click(displayTrigger);
+    const sponsorCheckbox = screen.getByLabelText(
+      /show visa sponsor information/i,
+    );
+    fireEvent.click(sponsorCheckbox);
+
+    const saveButton = screen.getByRole("button", { name: /^save$/i });
+    await waitFor(() => expect(saveButton).toBeEnabled());
+    fireEvent.click(saveButton);
+
+    await waitFor(() => expect(api.updateSettings).toHaveBeenCalled());
+    expect(toast.error).not.toHaveBeenCalledWith(
+      "Choose one Reactive Resume auth method",
+      expect.anything(),
+    );
   });
 
   it("enables save button when basic auth toggle is changed", async () => {

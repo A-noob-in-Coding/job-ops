@@ -1,4 +1,4 @@
-import type { Job, JobStatus } from "@shared/types.js";
+import type { Job } from "@shared/types.js";
 import {
   ArrowUpRight,
   Calendar,
@@ -21,41 +21,16 @@ import {
 import { cn, formatDate, sourceLabel } from "@/lib/utils";
 import { useSettings } from "../hooks/useSettings";
 import {
-  defaultStatusToken,
-  statusTokens,
-} from "../pages/orchestrator/constants";
+  getJobStatusIndicator,
+  getTracerStatusIndicator,
+  StatusIndicator,
+} from "./StatusIndicator";
 
 interface JobHeaderProps {
   job: Job;
   className?: string;
   onCheckSponsor?: () => Promise<void>;
 }
-
-const StatusPill: React.FC<{ status: JobStatus }> = ({ status }) => {
-  const tokens = statusTokens[status] ?? defaultStatusToken;
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/80",
-      )}
-    >
-      <span className={cn("h-1.5 w-1.5 rounded-full opacity-80", tokens.dot)} />
-      {tokens.label}
-    </span>
-  );
-};
-
-const TracerPill: React.FC<{ enabled: boolean }> = ({ enabled }) => (
-  <span className="inline-flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/80">
-    <span
-      className={cn(
-        "h-1.5 w-1.5 rounded-full opacity-80",
-        enabled ? "bg-violet-500" : "bg-slate-500",
-      )}
-    />
-    {enabled ? "Tracer On" : "Tracer Off"}
-  </span>
-);
 
 const ScoreMeter: React.FC<{ score: number | null }> = ({ score }) => {
   if (score == null) {
@@ -159,30 +134,26 @@ const SponsorPill: React.FC<SponsorPillProps> = ({ score, names, onCheck }) => {
   };
 
   const status = getStatus(score);
-  const tooltipContent = `${score}% match`;
+  const tooltip = (
+    <>
+      {parsedNames.length > 0 && (
+        <p className="text-xs font-medium space-x-1">
+          <span className="opacity-70">Matched</span>
+          <span>{parsedNames.join(", ")}</span>
+        </p>
+      )}
+      <p className="opacity-80 mt-1 text-[10px]">{`${score}% match`}</p>
+    </>
+  );
 
   return (
-    <TooltipProvider>
-      <Tooltip delayDuration={0}>
-        <TooltipTrigger asChild>
-          <span className="inline-flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/80 cursor-help">
-            <span
-              className={cn("h-1.5 w-1.5 rounded-full opacity-80", status.dot)}
-            />
-            {status.label}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-xs">
-          {parsedNames.length > 0 && (
-            <p className="text-xs font-medium space-x-1">
-              <span className="opacity-70">Matched</span>
-              <span>{parsedNames.join(", ")}</span>
-            </p>
-          )}
-          <p className="opacity-80 mt-1 text-[10px]">{tooltipContent}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <StatusIndicator
+      dotColor={status.dot}
+      label={status.label}
+      className="cursor-help"
+      tooltip={tooltip}
+      tooltipClassName="max-w-xs"
+    />
   );
 };
 
@@ -191,6 +162,8 @@ export const JobHeader: React.FC<JobHeaderProps> = ({
   className,
   onCheckSponsor,
 }) => {
+  const jobStatus = getJobStatusIndicator(job.status);
+  const tracerStatus = getTracerStatusIndicator(job.tracerLinksEnabled);
   const { showSponsorInfo } = useSettings();
   const { pathname } = useLocation();
   const isJobPage = pathname.startsWith("/job/");
@@ -267,8 +240,14 @@ export const JobHeader: React.FC<JobHeaderProps> = ({
       {/* Status and score: single line, subdued */}
       <div className="flex items-center justify-between gap-2 py-1 border-y border-border/30">
         <div className="flex items-center gap-4">
-          <StatusPill status={job.status} />
-          <TracerPill enabled={job.tracerLinksEnabled} />
+          <StatusIndicator
+            dotColor={jobStatus.dotColor}
+            label={jobStatus.label}
+          />
+          <StatusIndicator
+            dotColor={tracerStatus.dotColor}
+            label={tracerStatus.label}
+          />
           {showSponsorInfo && (
             <SponsorPill
               score={job.sponsorMatchScore}

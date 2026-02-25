@@ -1,19 +1,13 @@
-/**
- * Profile service - fetches resume data from RxResume v4 API.
- *
- * The rxresumeBaseResumeId setting is REQUIRED for the app to function.
- * There is no local file fallback.
- */
-
+import { logger } from "@infra/logger";
 import type { ResumeProfile } from "@shared/types";
-import { getSetting } from "../repositories/settings";
-import { getResume, RxResumeCredentialsError } from "./rxresume-v4";
+import { getResume, RxResumeAuthConfigError } from "./rxresume";
+import { getConfiguredRxResumeBaseResumeId } from "./rxresume/baseResumeId";
 
 let cachedProfile: ResumeProfile | null = null;
 let cachedResumeId: string | null = null;
 
 /**
- * Get the base resume profile from RxResume v4 API.
+ * Get the base resume profile from RxResume.
  *
  * Requires rxresumeBaseResumeId to be configured in settings.
  * Results are cached until clearProfileCache() is called.
@@ -22,7 +16,8 @@ let cachedResumeId: string | null = null;
  * @throws Error if rxresumeBaseResumeId is not configured or API call fails.
  */
 export async function getProfile(forceRefresh = false): Promise<ResumeProfile> {
-  const rxresumeBaseResumeId = await getSetting("rxresumeBaseResumeId");
+  const { resumeId: rxresumeBaseResumeId } =
+    await getConfiguredRxResumeBaseResumeId();
 
   if (!rxresumeBaseResumeId) {
     throw new Error(
@@ -40,9 +35,9 @@ export async function getProfile(forceRefresh = false): Promise<ResumeProfile> {
   }
 
   try {
-    console.log(
-      `📋 Fetching profile from RxResume v4 API (resume: ${rxresumeBaseResumeId})...`,
-    );
+    logger.info("Fetching profile from Reactive Resume", {
+      resumeId: rxresumeBaseResumeId,
+    });
     const resume = await getResume(rxresumeBaseResumeId);
 
     if (!resume.data || typeof resume.data !== "object") {
@@ -51,15 +46,18 @@ export async function getProfile(forceRefresh = false): Promise<ResumeProfile> {
 
     cachedProfile = resume.data as unknown as ResumeProfile;
     cachedResumeId = rxresumeBaseResumeId;
-    console.log(`✅ Profile loaded from RxResume v4 API`);
+    logger.info("Profile loaded from Reactive Resume", {
+      resumeId: rxresumeBaseResumeId,
+    });
     return cachedProfile;
   } catch (error) {
-    if (error instanceof RxResumeCredentialsError) {
-      throw new Error(
-        "RxResume credentials not configured. Set RXRESUME_EMAIL and RXRESUME_PASSWORD in settings.",
-      );
+    if (error instanceof RxResumeAuthConfigError) {
+      throw new Error(error.message);
     }
-    console.error(`❌ Failed to load profile from RxResume v4 API:`, error);
+    logger.error("Failed to load profile from Reactive Resume", {
+      resumeId: rxresumeBaseResumeId,
+      error,
+    });
     throw error;
   }
 }

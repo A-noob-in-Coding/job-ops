@@ -37,6 +37,7 @@ import type {
   ProfileStatusResponse,
   ResumeProfile,
   ResumeProjectCatalogItem,
+  RxResumeMode,
   StageEvent,
   StageEventMetadata,
   StageTransitionTarget,
@@ -1253,7 +1254,11 @@ export async function getResumeProjectsCatalog(): Promise<
   try {
     const settings = await getSettings();
     if (settings.rxresumeBaseResumeId) {
-      return await getRxResumeProjects(settings.rxresumeBaseResumeId);
+      return await getRxResumeProjects(
+        settings.rxresumeBaseResumeId,
+        undefined,
+        settings.rxresumeMode?.value,
+      );
     }
   } catch {
     // fall through to profile-based projects
@@ -1287,13 +1292,16 @@ export async function validateLlm(input: {
   });
 }
 
-export async function validateRxresume(
-  email?: string,
-  password?: string,
-): Promise<ValidationResult> {
+export async function validateRxresume(input?: {
+  mode?: "v4" | "v5";
+  email?: string;
+  password?: string;
+  apiKey?: string;
+  baseUrl?: string;
+}): Promise<ValidationResult> {
   return fetchApi<ValidationResult>("/onboarding/validate/rxresume", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify(input ?? {}),
   });
 }
 
@@ -1310,9 +1318,12 @@ export async function updateSettings(
   });
 }
 
-export async function getRxResumes(): Promise<{ id: string; name: string }[]> {
+export async function getRxResumes(
+  mode?: RxResumeMode,
+): Promise<{ id: string; name: string }[]> {
+  const query = mode ? `?mode=${encodeURIComponent(mode)}` : "";
   const data = await fetchApi<{ resumes: { id: string; name: string }[] }>(
-    "/settings/rx-resumes",
+    `/settings/rx-resumes${query}`,
   );
   return data.resumes;
 }
@@ -1320,9 +1331,11 @@ export async function getRxResumes(): Promise<{ id: string; name: string }[]> {
 export async function getRxResumeProjects(
   resumeId: string,
   signal?: AbortSignal,
+  mode?: RxResumeMode,
 ): Promise<ResumeProjectCatalogItem[]> {
+  const query = mode ? `?mode=${encodeURIComponent(mode)}` : "";
   const data = await fetchApi<{ projects: ResumeProjectCatalogItem[] }>(
-    `/settings/rx-resumes/${encodeURIComponent(resumeId)}/projects`,
+    `/settings/rx-resumes/${encodeURIComponent(resumeId)}/projects${query}`,
     { signal },
   );
   return data.projects;

@@ -1,13 +1,16 @@
+import { logger } from "@infra/logger";
 import * as settingsRepo from "@server/repositories/settings";
 import { settingsRegistry } from "@shared/settings-registry";
 import type { AppSettings } from "@shared/types";
 import { getEnvSettingsData } from "./envSettings";
 import { getProfile } from "./profile";
+import { resolveResumeProjectsSettings } from "./resumeProjects";
 import {
-  extractProjectsFromProfile,
-  resolveResumeProjectsSettings,
-} from "./resumeProjects";
-import { getResume, RxResumeCredentialsError } from "./rxresume-v4";
+  extractProjectsFromResume,
+  getResume,
+  RxResumeAuthConfigError,
+} from "./rxresume";
+import { resolveRxResumeBaseResumeIdForMode } from "./rxresume/baseResumeId";
 
 function resolveDefaultLlmBaseUrl(provider: string): string {
   const normalized = provider.trim().toLowerCase();
@@ -28,7 +31,12 @@ function resolveDefaultLlmBaseUrl(provider: string): string {
 export async function getEffectiveSettings(): Promise<AppSettings> {
   const overrides = await settingsRepo.getAllSettings();
 
-  const rxresumeBaseResumeId = overrides.rxresumeBaseResumeId ?? null;
+  const rxresumeBaseResumeId = resolveRxResumeBaseResumeIdForMode({
+    rxresumeMode: overrides.rxresumeMode ?? process.env.RXRESUME_MODE ?? null,
+    rxresumeBaseResumeId: overrides.rxresumeBaseResumeId ?? null,
+    rxresumeBaseResumeIdV4: overrides.rxresumeBaseResumeIdV4 ?? null,
+    rxresumeBaseResumeIdV5: overrides.rxresumeBaseResumeIdV5 ?? null,
+  });
   let profile: Record<string, unknown> = {};
 
   if (rxresumeBaseResumeId) {
@@ -38,22 +46,26 @@ export async function getEffectiveSettings(): Promise<AppSettings> {
         profile = resume.data as Record<string, unknown>;
       }
     } catch (error) {
-      if (error instanceof RxResumeCredentialsError) {
-        console.warn(
-          "RxResume credentials missing while loading base resume from settings.",
+      if (error instanceof RxResumeAuthConfigError) {
+        logger.warn(
+          "Reactive Resume credentials missing during settings load",
+          {
+            resumeId: rxresumeBaseResumeId,
+            error,
+          },
         );
       } else {
-        console.warn(
-          "Failed to load RxResume base resume for settings:",
+        logger.warn("Failed to load Reactive Resume base resume for settings", {
+          resumeId: rxresumeBaseResumeId,
           error,
-        );
+        });
       }
     }
   }
 
   if (Object.keys(profile).length === 0) {
     profile = await getProfile().catch((error) => {
-      console.warn("Failed to load base resume profile for settings:", error);
+      logger.warn("Failed to load base resume profile for settings", { error });
       return {};
     });
   }
@@ -90,7 +102,19 @@ export async function getEffectiveSettings(): Promise<AppSettings> {
       }
 
       if (key === "resumeProjects") {
-        const { catalog } = extractProjectsFromProfile(profile);
+        let catalog: AppSettings["profileProjects"] = [];
+        if (Object.keys(profile).length > 0) {
+          try {
+            catalog = extractProjectsFromResume(profile).catalog;
+          } catch (error) {
+            logger.warn(
+              "Failed to extract projects from Reactive Resume data",
+              {
+                error,
+              },
+            );
+          }
+        }
         const resolved = resolveResumeProjectsSettings({
           catalog,
           overrideRaw: rawOverride ?? null,
@@ -127,6 +151,9 @@ export async function getEffectiveSettings(): Promise<AppSettings> {
       }
     }
   }
+
+  // Always expose the effective base resume id for the active RxResume mode.
+  result.rxresumeBaseResumeId = rxresumeBaseResumeId;
 
   return result as AppSettings;
 }
